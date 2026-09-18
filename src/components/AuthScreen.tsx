@@ -84,6 +84,7 @@ export const AuthScreen: React.FC = () => {
         <p className="text-center text-xs text-[#5E7A99]">
           SOFER Gestión • Acceso con Google y asignación de roles por el administrador
         </p>
+        <p className="text-center text-[10px] text-[#8AA0B8]">versión gis-9a8f5e9</p>
       </div>
     </div>
   );
