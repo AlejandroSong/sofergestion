@@ -10,6 +10,18 @@ export const AuthScreen: React.FC = () => {
   const buttonHostRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  const copyOrigin = async () => {
+    try {
+      await navigator.clipboard.writeText(origin);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   useEffect(() => {
     const host = buttonHostRef.current;
@@ -79,6 +91,23 @@ export const AuthScreen: React.FC = () => {
             {isBusy && <p className="text-xs text-[#3D6FA8] font-medium">Entrando…</p>}
             <div ref={buttonHostRef} className="min-h-[44px] flex justify-center" />
           </div>
+
+          {origin && (
+            <div className="mt-5 p-3 bg-[#F7F9FC] border border-[#D5E4F5] rounded-2xl text-[11px] text-[#3D5A78] space-y-2">
+              <p>
+                Si Google muestra <strong>origin_mismatch</strong>, en Google Cloud → cliente Web →
+                <strong> orígenes de JavaScript autorizados</strong> pega exactamente:
+              </p>
+              <button
+                type="button"
+                onClick={() => void copyOrigin()}
+                className="w-full text-left font-mono text-[10px] break-all bg-white border border-[#C9DCF2] rounded-xl px-3 py-2 text-[#1E3A5F]"
+              >
+                {origin}
+              </button>
+              <p className="text-[#5E7A99]">{copied ? 'Copiado.' : 'Clic para copiar. Sin barra / al final.'}</p>
+            </div>
+          )}
         </div>
 
         <p className="text-center text-xs text-[#5E7A99]">
