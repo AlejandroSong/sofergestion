@@ -436,22 +436,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* Admin KPI 2: Balance Consolidado */}
-            <div className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between">
+            {/* Admin KPI 2: Balance Neto */}
+            <div className="bg-blue-50 border border-blue-200 text-blue-950 p-4 rounded-xl shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#5A6B82] uppercase tracking-wider">
-                  Balance General
+                <span className="text-xs font-semibold uppercase tracking-wider text-blue-600">
+                  Balance Neto
                 </span>
-                <div className="p-2.5 rounded-xl bg-green-50 border border-green-200 text-green-600">
+                <div className="p-2.5 rounded-xl bg-white/80 border border-blue-200 text-blue-700">
                   <Euro className="w-4 h-4" />
                 </div>
               </div>
               <div className="mt-3">
-                <p className="text-2xl sm:text-3xl font-bold text-[#16202E]">
+                <p className="text-2xl font-bold text-blue-900">
+                  {balanceGlobal >= 0 ? '+' : ''}
                   {formatCurrency(balanceGlobal)}
                 </p>
                 <div className="mt-1 flex items-center justify-between text-xs">
-                  <span className="text-green-600 font-semibold flex items-center gap-0.5">
+                  <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
                     <TrendingUp className="w-3 h-3" /> +{formatCurrency(totalIngresos)}
                   </span>
                   <span className="text-red-600 font-semibold flex items-center gap-0.5">
@@ -552,23 +553,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             return (
               <div
                 key={bldg.id}
-                className="group rounded-2xl border border-[#282828] hover:border-[#0A2E6D]/50 hover:shadow-xl transition-all overflow-hidden bg-[#171717] flex flex-col justify-between"
+                className="group bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-all flex flex-col justify-between"
               >
                 <div>
                   {/* Building Image Cover */}
-                  <div className="relative h-36 overflow-hidden">
+                  <div className="relative h-40 overflow-hidden">
                     <img
                       src={bldg.image}
                       alt={bldg.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       referrerPolicy="no-referrer"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#171717] via-[#171717]/40 to-transparent" />
-                    <span className="absolute top-3 left-3 font-mono text-[10px] font-bold text-[#16202E] bg-[#FFFFFF]/80 backdrop-blur-xs px-2 py-0.5 rounded border border-[#E2E8F0]">
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />
+                    <span className="absolute top-3 left-3 font-mono text-[10px] font-bold text-slate-800 bg-white/90 backdrop-blur-xs px-2 py-0.5 rounded border border-slate-200">
                       {bldg.code}
                     </span>
 
-                    {/* Delete button (Admin permission) */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -576,74 +576,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           deleteBuilding(bldg.id);
                         }
                       }}
-                      className="absolute top-3 right-3 p-1.5 bg-[#FFFFFF]/70 hover:bg-red-600 text-[#16202E] rounded-lg transition-colors cursor-pointer"
+                      className="absolute top-3 right-3 p-1.5 bg-white/80 hover:bg-red-600 hover:text-white text-slate-700 rounded-lg transition-colors cursor-pointer"
                       title="Eliminar Edificio"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
 
-                    <div className="absolute bottom-2.5 left-3 right-3 text-[#16202E]">
-                      <h4 className="font-bold text-base leading-tight truncate text-[#16202E]">{bldg.name}</h4>
-                      <p className="text-[11px] text-[#5A6B82] truncate mt-0.5">{bldg.address}</p>
+                    <div className="absolute bottom-2.5 left-3 right-3 text-white">
+                      <h4 className="font-bold text-base leading-tight truncate">{bldg.name}</h4>
+                      <p className="text-[11px] text-white/80 truncate mt-0.5">{bldg.address}</p>
                     </div>
                   </div>
 
                   {/* Body Info */}
-                  <div className="p-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="p-2 rounded-lg bg-[#FFFFFF] border border-[#E2E8F0]">
-                        <span className="text-[10px] uppercase font-bold text-[#5A6B82] block">Caja Reparación</span>
+                  <div className="p-4 bg-slate-50 border-t border-slate-100">
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                        <span className="text-xs text-slate-500 font-medium">Caja Reparación</span>
                         <div className="flex items-center justify-between mt-0.5">
-                          <span className="font-bold font-mono text-green-600">
-                            {formatCurrency(bldg.repairFund || 0)}
-                          </span>
+                          <p className="font-bold text-slate-800">{formatCurrency(bldg.repairFund || 0)}</p>
                           <button
                             onClick={() => setSelectedBuildingToAdjust(bldg)}
-                            className="text-[#0A2E6D] hover:underline text-[10px] cursor-pointer"
+                            className="text-blue-600 hover:underline text-[10px] cursor-pointer"
                             title="Ajustar o recargar caja"
                           >
                             Ajustar
                           </button>
                         </div>
                       </div>
-                      <div className="p-2 rounded-lg bg-[#FFFFFF] border border-[#E2E8F0]">
-                        <span className="text-[10px] uppercase font-bold text-[#5A6B82] block">Balance General</span>
-                        <span className={`font-bold font-mono ${bldgBal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                        <span className="text-xs text-slate-500 font-medium">Balance General</span>
+                        <p className={`font-bold ${bldgBal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                           {formatCurrency(bldgBal)}
-                        </span>
+                        </p>
                       </div>
                     </div>
 
-                    <div className="text-xs space-y-1">
-                      <p className="text-[#5A6B82] flex items-center justify-between">
-                        <span className="text-[#5A6B82] font-medium">Presidente:</span>
-                        <span className="font-semibold text-[#16202E] truncate ml-2">{bldg.presidentName}</span>
+                    <div className="text-xs space-y-1 mb-3">
+                      <p className="text-slate-500 flex items-center justify-between">
+                        <span className="font-medium">Presidente:</span>
+                        <span className="font-semibold text-slate-800 truncate ml-2">{bldg.presidentName}</span>
                       </p>
-                      <p className="text-[#5A6B82] flex items-center justify-between">
-                        <span className="text-[#5A6B82] font-medium">Incidencias:</span>
-                        <span className="font-semibold text-[#5A6B82]">
+                      <p className="text-slate-500 flex items-center justify-between">
+                        <span className="font-medium">Incidencias:</span>
+                        <span className="font-semibold">
                           {bldgActive.length > 0 ? (
-                            <span className="text-yellow-300 font-bold bg-yellow-50 border border-yellow-200 px-1.5 py-0.2 rounded">
+                            <span className="text-amber-700 font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
                               {bldgActive.length} activas
                             </span>
                           ) : (
-                            <span className="text-green-600 font-medium">Al día</span>
+                            <span className="text-emerald-600 font-medium">Al día</span>
                           )}
                         </span>
                       </p>
                     </div>
-                  </div>
-                </div>
 
-                {/* Card Footer Button */}
-                <div className="p-3 bg-[#131313] border-t border-[#E2E8F0] flex items-center justify-between">
-                  <button
-                    onClick={() => setSelectedBuildingId(bldg.id)}
-                    className="w-full py-1.5 px-3 bg-[#E8EFF9] hover:bg-[#0A2E6D] hover:text-black text-[#16202E] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-[#303030]"
-                  >
-                    <span>Ver Estado de Cuenta & Tickets</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                    <button
+                      onClick={() => setSelectedBuildingId(bldg.id)}
+                      className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span>Ver Estado de Cuenta & Tickets</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -731,7 +726,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* Worker Payouts Table */}
           <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl bg-[#FFFFFF]">
             <table className="w-full text-left text-xs text-[#16202E]">
-              <thead className="bg-[#F4F6FA] text-[#5A6B82] uppercase font-semibold border-b border-[#E2E8F0]">
+              <thead className="bg-slate-800 text-white text-xs uppercase tracking-wider">
                 <tr>
                   <th className="py-2.5 px-3">Referencia</th>
                   <th className="py-2.5 px-3">Operario</th>
@@ -1179,15 +1174,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl bg-white">
             <table className="w-full text-left text-xs text-[#16202E]">
-              <thead className="bg-[#F4F6FA] text-[#5A6B82] uppercase font-semibold border-b border-[#E2E8F0]">
+              <thead className="bg-slate-800 text-white text-xs uppercase tracking-wider">
                 <tr>
-                  <th className="py-2.5 px-3">Código</th>
-                  <th className="py-2.5 px-3">Fecha</th>
-                  <th className="py-2.5 px-3">Edificio</th>
-                  <th className="py-2.5 px-3">Concepto / Descripción</th>
-                  <th className="py-2.5 px-3">Categoría</th>
-                  <th className="py-2.5 px-3">Método</th>
-                  <th className="py-2.5 px-3 text-right">Importe</th>
+                  <th className="py-3 px-4 text-left">Código</th>
+                  <th className="py-3 px-4 text-left">Fecha</th>
+                  <th className="py-3 px-4 text-left">Edificio</th>
+                  <th className="py-3 px-4 text-left">Concepto / Descripción</th>
+                  <th className="py-3 px-4 text-left">Categoría</th>
+                  <th className="py-3 px-4 text-left">Método</th>
+                  <th className="py-3 px-4 text-right">Importe</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
