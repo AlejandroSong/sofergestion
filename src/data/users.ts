@@ -24,7 +24,6 @@ const DEMO_EMAILS = new Set([
   'daniel.ortega@servicios.es',
   'mateo.iglesias@servicios.es',
   'marcos.delapena@servicios.es',
-  'support@revengeofpirates.com',
   'admin@gestioninmuebles.com',
 ]);
 

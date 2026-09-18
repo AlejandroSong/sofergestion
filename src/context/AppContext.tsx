@@ -12,6 +12,7 @@ import {
 } from '../data/initialData';
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isPrimaryAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
+import { fetchProfiles, mergeUsersByEmail, persistProfile, upsertProfile } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -320,21 +321,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedUser = newUsers.find((u) => u.id === id);
       if (updatedUser) setCurrentUser(updatedUser);
     }
+    const persisted = newUsers.find((u) => u.id === id);
+    if (persisted) {
+      void supabase?.auth.getUser().then(({ data }) => {
+        void persistProfile(persisted, data.user?.id);
+      });
+    }
     showToast('Rol Actualizado', 'Se han actualizado libremente los permisos del usuario', 'success');
   };
 
   const toggleUserStatus = (id: string) => {
-    if (id === ADMIN_USER.id || id === 'user-admin-1') {
+    const targetUser = users.find(u => u.id === id);
+    if (!targetUser) return;
+    if (isPrimaryAdmin(targetUser)) {
       showToast('Acción Bloqueada', 'El Administrador Principal no puede ser suspendido.', 'alert');
       return;
     }
-    const targetUser = users.find(u => u.id === id);
-    if (!targetUser) return;
 
     const newStatus = targetUser.status === 'suspended' ? 'active' : 'suspended';
     const newUsers = users.map(u => u.id === id ? { ...u, status: newStatus } : u);
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
+    const updated = newUsers.find((u) => u.id === id);
+    if (updated) {
+      void supabase?.auth.getUser().then(({ data }) => {
+        void persistProfile(updated, data.user?.id);
+      });
+    }
 
     if (currentUser.id === id && newStatus === 'suspended') {
       setIsAuthenticated(false);
@@ -375,14 +388,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteUser = (id: string) => {
-    if (id === ADMIN_USER.id || id === 'user-admin-1') {
+    if (isPrimaryAdmin({ ...ADMIN_USER, id })) {
       showToast('Acción Bloqueada', 'No se puede eliminar la cuenta del Administrador Principal.', 'alert');
-      return; // Protection for the first admin
+      return;
     }
     const userToDelete = users.find(u => u.id === id);
+    if (userToDelete && isPrimaryAdmin(userToDelete)) {
+      showToast('Acción Bloqueada', 'No se puede eliminar la cuenta del Administrador Principal.', 'alert');
+      return;
+    }
     const newUsers = users.filter(u => u.id !== id);
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
+    if (supabase && userToDelete && /^[0-9a-f-]{36}$/i.test(userToDelete.id)) {
+      void supabase.from('profiles').delete().eq('id', userToDelete.id);
+    }
 
     if (currentUser.id === id) {
       // Fallback to first admin
@@ -782,16 +802,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       const meta = session.user.user_metadata || {};
       const provider = session.user.app_metadata?.provider === 'google' ? 'google' : 'email';
+      const email = session.user.email;
       loginWithGoogle(
         {
-          name: meta.full_name || meta.name || session.user.email,
-          email: session.user.email,
+          name: meta.full_name || meta.name || email,
+          email,
           avatar: meta.avatar_url || meta.picture,
-          role: session.user.email.toLowerCase() === ADMIN_USER.email.toLowerCase() ? 'admin' : 'unassigned',
+          role: email.toLowerCase() === ADMIN_USER.email.toLowerCase() ? 'admin' : 'unassigned',
           provider,
         },
         silent
       );
+      const pendingUser: User = {
+        id: session.user.id,
+        name: meta.full_name || meta.name || email,
+        email,
+        role: email.toLowerCase() === ADMIN_USER.email.toLowerCase() ? 'admin' : 'unassigned',
+        avatar: meta.avatar_url || meta.picture || ADMIN_USER.avatar,
+        phone: '+34 600 000 000',
+        provider,
+        status: 'active',
+      };
+      void upsertProfile(pendingUser, session.user.id).then(async () => {
+        const remote = await fetchProfiles();
+        if (!remote.length) return;
+        setUsers((prev) => {
+          const newcomers = remote.filter(
+            (r) =>
+              r.role === 'unassigned' &&
+              !prev.some((p) => p.email.trim().toLowerCase() === r.email.trim().toLowerCase())
+          );
+          const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
+          localStorage.setItem('gest_v2_users', JSON.stringify(merged));
+          if (newcomers.length && email.toLowerCase() === ADMIN_USER.email.toLowerCase()) {
+            showToast(
+              'Nuevo registro',
+              newcomers.map((n) => n.email).join(', ') + ' esperan asignación de rol.',
+              'info'
+            );
+          }
+          return merged;
+        });
+      });
     };
 
     const {
@@ -814,6 +866,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel('profiles-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        void fetchProfiles().then((remote) => {
+          if (!remote.length) return;
+          setUsers((prev) => {
+            const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
+            localStorage.setItem('gest_v2_users', JSON.stringify(merged));
+            return merged;
+          });
+        });
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
     };
   }, []);
 
