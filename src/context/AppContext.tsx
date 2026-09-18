@@ -72,6 +72,7 @@ interface AppContextType {
   loginWithEmail: (email: string, password?: string) => Promise<{ success: boolean; message?: string }>;
   loginWithGoogle: (googleData: { name: string; email: string; avatar?: string; role?: Role; buildingId?: string; specialty?: string }) => { success: boolean; message?: string };
   signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
+  signInWithGoogleCredential: (token: string) => Promise<{ success: boolean; message?: string }>;
   registerUser: (userData: { name: string; email: string; password?: string; role: Role; phone?: string; buildingId?: string; specialty?: string; provider?: 'email' | 'google'; status?: 'active' | 'suspended' }) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
 
@@ -543,20 +544,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     try {
       const token = await requestGoogleIdToken(googleClientId);
-      const { error } = await supabase.auth.signInWithIdToken({
-        provider: 'google',
-        token,
-      });
-      if (error) {
-        return { success: false, message: error.message };
-      }
-      return { success: true };
+      return signInWithGoogleCredential(token);
     } catch (err) {
       return {
         success: false,
         message: err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google',
       };
     }
+  };
+
+  const signInWithGoogleCredential = async (
+    token: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    if (!supabase) {
+      return { success: false, message: 'Falta configurar Supabase.' };
+    }
+    const { error } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token,
+    });
+    if (error) {
+      return { success: false, message: error.message };
+    }
+    return { success: true };
   };
 
   const registerUser = async (userData: {
@@ -1976,6 +1986,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         loginWithEmail,
         loginWithGoogle,
         signInWithGoogle,
+        signInWithGoogleCredential,
         registerUser,
         logout,
         buildings,
