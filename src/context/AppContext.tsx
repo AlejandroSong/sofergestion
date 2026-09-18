@@ -48,6 +48,7 @@ interface ToastItem {
 interface AppContextType {
   currentUser: User;
   allUsers: User[];
+  refreshDirectory: () => Promise<void>;
   isAuthenticated: boolean;
   authReady: boolean;
   setCurrentUser: (user: User) => void;
@@ -922,6 +923,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const refreshDirectory = async () => {
+    const remote = await fetchProfiles();
+    if (!remote.length) return;
+    setUsers((prev) => {
+      const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
+      localStorage.setItem('gest_v2_users', JSON.stringify(merged));
+      return merged;
+    });
+  };
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshDirectory();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = window.setInterval(() => void refreshDirectory(), 20000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -1973,6 +1996,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUser,
         allUsers: users,
+        refreshDirectory,
         isAuthenticated,
         authReady,
         setCurrentUser,

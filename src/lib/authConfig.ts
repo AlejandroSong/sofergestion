@@ -13,7 +13,3 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
 export function googleRedirectUri(): string {
   return `${window.location.origin}${GOOGLE_CALLBACK_PATH}`;
 }
-
-export function supabaseRedirectTo(): string {
-  return `${window.location.origin}/`;
-}

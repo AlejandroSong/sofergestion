@@ -1,20 +1,26 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# SOFER Gestión
 
-# Run and deploy your AI Studio app
+App de administración de edificios (incidencias, finanzas, roles). Acceso solo con Google.
 
-This contains everything you need to run your app locally.
+## URL
 
-View your app in AI Studio: https://ai.studio/apps/9470f5dd-9cb8-496a-bf55-33aacaa1680e
+https://sofergestion-davidalejandroroblesmarquez-5406s-projects.vercel.app
 
-## Run Locally
+No uses `sofergestion-8za0q407m.vercel.app` (versión antigua).
 
-**Prerequisites:**  Node.js
+## Local
 
+```bash
+npm install
+npm run dev
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Copia `.env.example` a `.env.local` con `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` y `VITE_GOOGLE_CLIENT_ID`.
+
+## Google Cloud
+
+Origen de JavaScript: la URL de Production y `http://localhost:3000`.
+
+## Supabase
+
+En SQL Editor ejecuta `supabase/profiles.sql` para que el admin vea las altas de Google de otros dispositivos.

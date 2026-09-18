@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users,
@@ -45,6 +45,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     toggleUserStatus,
     revokeBuildingAssignment,
     buildings,
+    refreshDirectory,
   } = useApp();
 
   const [isAdding, setIsAdding] = useState(false);
@@ -77,6 +78,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const [editUnitOrArea, setEditUnitOrArea] = useState<string>('');
   const [editMonthlyFee, setEditMonthlyFee] = useState<number>(85);
   const [selectedNeighborForAccountEdit, setSelectedNeighborForAccountEdit] = useState<User | null>(null);
+
+  useEffect(() => {
+    if (isOpen) void refreshDirectory();
+  }, [isOpen, refreshDirectory]);
 
   const standardSpecialties = [
     'Electricidad y Climatización',
