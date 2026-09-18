@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import {
   INITIAL_BUILDINGS,
@@ -647,6 +647,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
+    clearWelcomeShown();
     void supabase?.auth.signOut();
     setIsAuthenticated(false);
     localStorage.setItem('gest_v2_is_authenticated', 'false');
@@ -776,6 +777,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     requestBrowserNotificationPermission();
   }, []);
 
+  const welcomeUserIdRef = useRef<string | null>(null);
+
+  const markWelcomeShown = (userId: string) => {
+    welcomeUserIdRef.current = userId;
+    try {
+      sessionStorage.setItem('sofer_welcome_user', userId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const wasWelcomeShown = (userId: string) => {
+    if (welcomeUserIdRef.current === userId) return true;
+    try {
+      return sessionStorage.getItem('sofer_welcome_user') === userId;
+    } catch {
+      return false;
+    }
+  };
+
+  const clearWelcomeShown = () => {
+    welcomeUserIdRef.current = null;
+    try {
+      sessionStorage.removeItem('sofer_welcome_user');
+    } catch {
+      /* ignore */
+    }
+  };
+
   const showToast = (title: string, message: string, type: 'success' | 'alert' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
     setToasts((prev) => [...prev, { id, title, message, type }]);
@@ -850,15 +880,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'INITIAL_SESSION') {
+        if (session?.user?.id) markWelcomeShown(session.user.id);
         if (session) applySession(session, true);
         setAuthReady(true);
         return;
       }
       if (event === 'SIGNED_IN' && session) {
-        applySession(session, false);
+        const alreadyWelcomed = Boolean(session.user.id && wasWelcomeShown(session.user.id));
+        if (session.user.id) markWelcomeShown(session.user.id);
+        applySession(session, alreadyWelcomed);
         return;
       }
       if (event === 'SIGNED_OUT') {
+        clearWelcomeShown();
         setIsAuthenticated(false);
         localStorage.setItem('gest_v2_is_authenticated', 'false');
       }
