@@ -11,6 +11,8 @@ import {
   INITIAL_NEIGHBOR_REQUESTS,
 } from '../data/initialData';
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isPrimaryAdmin, withSingleAdmin } from '../data/users';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 import {
   Building,
   CommonArea,
@@ -45,6 +47,7 @@ interface AppContextType {
   currentUser: User;
   allUsers: User[];
   isAuthenticated: boolean;
+  authReady: boolean;
   setCurrentUser: (user: User) => void;
   addUser: (user: Omit<User, 'id'>) => User;
   updateUser: (id: string, updates: Partial<User>) => void;
@@ -64,9 +67,10 @@ interface AppContextType {
   revokeBuildingAssignment: (userId: string) => void;
   deleteUser: (id: string) => void;
   switchRole: (role: Role, userId?: string) => void;
-  loginWithEmail: (email: string, password?: string) => { success: boolean; message?: string };
+  loginWithEmail: (email: string, password?: string) => Promise<{ success: boolean; message?: string }>;
   loginWithGoogle: (googleData: { name: string; email: string; avatar?: string; role?: Role; buildingId?: string; specialty?: string }) => { success: boolean; message?: string };
-  registerUser: (userData: { name: string; email: string; password?: string; role: Role; phone?: string; buildingId?: string; specialty?: string; provider?: 'email' | 'google' }) => { success: boolean; message?: string };
+  signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
+  registerUser: (userData: { name: string; email: string; password?: string; role: Role; phone?: string; buildingId?: string; specialty?: string; provider?: 'email' | 'google'; status?: 'active' | 'suspended' }) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
 
   buildings: Building[];
@@ -187,7 +191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!alreadyReset) {
       localStorage.setItem('gest_v2_users', JSON.stringify([ADMIN_USER]));
       localStorage.setItem('gest_v2_current_user', JSON.stringify(ADMIN_USER));
-      localStorage.setItem('gest_v2_is_authenticated', 'true');
+      localStorage.setItem('gest_v2_is_authenticated', isSupabaseConfigured ? 'false' : 'true');
       localStorage.setItem(ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE);
       return [ADMIN_USER];
     }
@@ -197,7 +201,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return withSingleAdmin(loaded);
   });
 
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (isSupabaseConfigured) return false;
     const saved = localStorage.getItem('gest_v2_is_authenticated');
     return saved !== null ? saved === 'true' : true;
   });
@@ -384,7 +390,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Usuario Eliminado', `El usuario ${userToDelete?.name || ''} y sus roles fueron removidos del sistema`, 'info');
   };
 
-  const loginWithEmail = (email: string, password?: string): { success: boolean; message?: string } => {
+  const loginWithEmail = async (email: string, password?: string): Promise<{ success: boolean; message?: string }> => {
+    if (supabase) {
+      if (!password) {
+        return { success: false, message: 'Introduce tu contraseña.' };
+      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        return { success: false, message: error.message };
+      }
+      return { success: true };
+    }
+
     const cleanEmail = email.trim().toLowerCase();
     const foundUser = users.find(u => u.email.trim().toLowerCase() === cleanEmail);
     if (!foundUser) {
@@ -409,14 +429,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const loginWithGoogle = (googleData: {
-    name: string;
-    email: string;
-    avatar?: string;
-    role?: Role;
-    buildingId?: string;
-    specialty?: string;
-  }): { success: boolean; message?: string } => {
+  const loginWithGoogle = (
+    googleData: {
+      name: string;
+      email: string;
+      avatar?: string;
+      role?: Role;
+      buildingId?: string;
+      specialty?: string;
+      provider?: 'email' | 'google';
+    },
+    silent = false
+  ): { success: boolean; message?: string } => {
     const cleanEmail = googleData.email.trim().toLowerCase();
     const existing = users.find(u => u.email.trim().toLowerCase() === cleanEmail);
 
@@ -427,46 +451,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           message: 'Esta cuenta de Google está suspendida en el sistema.',
         };
       }
-      setCurrentUser(existing);
+      const nextUser = {
+        ...existing,
+        name: googleData.name || existing.name,
+        avatar: googleData.avatar || existing.avatar,
+        provider: googleData.provider || existing.provider || 'google',
+      };
+      setCurrentUser(nextUser);
       setIsAuthenticated(true);
       localStorage.setItem('gest_v2_is_authenticated', 'true');
-      localStorage.setItem('gest_v2_current_user', JSON.stringify(existing));
-      showToast('Google Sign-In', `¡Bienvenido de vuelta con Google, ${existing.name}!`, 'success');
+      localStorage.setItem('gest_v2_current_user', JSON.stringify(nextUser));
+      if (!silent) {
+        showToast('Google Sign-In', `¡Bienvenido de vuelta con Google, ${nextUser.name}!`, 'success');
+      }
       return { success: true };
     }
 
-    // Auto-create new user with Google details
     let assignedBuildingName: string | undefined = undefined;
     if (googleData.buildingId) {
       const b = buildings.find(b => b.id === googleData.buildingId);
       assignedBuildingName = b?.name;
     }
 
-    const newUser: User = {
-      id: `user-google-${Date.now()}`,
-      name: googleData.name || cleanEmail.split('@')[0],
-      email: cleanEmail,
-      role: googleData.role || 'worker',
-      avatar: googleData.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
-      phone: '+34 600 000 000',
-      buildingId: googleData.buildingId,
-      buildingName: assignedBuildingName,
-      specialty: googleData.specialty || (googleData.role === 'worker' ? 'Mantenimiento General' : undefined),
-      provider: 'google',
-    };
+    const isAdminEmail = cleanEmail === ADMIN_USER.email.toLowerCase();
+    const newUser: User = isAdminEmail
+      ? { ...ADMIN_USER, avatar: googleData.avatar || ADMIN_USER.avatar, provider: googleData.provider || 'google' }
+      : {
+          id: `user-google-${Date.now()}`,
+          name: googleData.name || cleanEmail.split('@')[0],
+          email: cleanEmail,
+          role: googleData.role || 'unassigned',
+          avatar: googleData.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
+          phone: '+34 600 000 000',
+          buildingId: googleData.buildingId,
+          buildingName: assignedBuildingName,
+          specialty: googleData.specialty,
+          provider: googleData.provider || 'google',
+          status: 'active',
+        };
 
-    const newUsers = [...users, newUser];
+    const newUsers = isAdminEmail ? withSingleAdmin(users) : [...users, newUser];
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
     setCurrentUser(newUser);
     setIsAuthenticated(true);
     localStorage.setItem('gest_v2_is_authenticated', 'true');
     localStorage.setItem('gest_v2_current_user', JSON.stringify(newUser));
-    showToast('Cuenta Creada con Google', `Cuenta de ${newUser.name} registrada exitosamente`, 'success');
+    if (!silent) {
+      showToast(
+        isAdminEmail ? 'Sesión Iniciada' : 'Cuenta Creada con Google',
+        isAdminEmail ? `¡Bienvenido, ${newUser.name}!` : `Cuenta de ${newUser.name} registrada. El administrador asignará tu rol.`,
+        'success'
+      );
+    }
     return { success: true };
   };
 
-  const registerUser = (userData: {
+  const signInWithGoogle = async (): Promise<{ success: boolean; message?: string }> => {
+    if (!supabase) {
+      return {
+        success: false,
+        message: 'Falta configurar Supabase. Crea .env.local con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY y reinicia Vite.',
+      };
+    }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+        queryParams: { access_type: 'offline', prompt: 'select_account' },
+      },
+    });
+    if (error) {
+      return { success: false, message: error.message };
+    }
+    return { success: true };
+  };
+
+  const registerUser = async (userData: {
     name: string;
     email: string;
     password?: string;
@@ -475,7 +536,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     buildingId?: string;
     specialty?: string;
     provider?: 'email' | 'google';
-  }): { success: boolean; message?: string } => {
+    status?: 'active' | 'suspended';
+  }): Promise<{ success: boolean; message?: string }> => {
+    if (supabase) {
+      if (!userData.password || userData.password.length < 6) {
+        return { success: false, message: 'La contraseña debe tener al menos 6 caracteres.' };
+      }
+      const { data, error } = await supabase.auth.signUp({
+        email: userData.email.trim(),
+        password: userData.password,
+        options: {
+          data: {
+            full_name: userData.name,
+            phone: userData.phone,
+          },
+        },
+      });
+      if (error) {
+        return { success: false, message: error.message };
+      }
+      if (!data.session) {
+        return {
+          success: true,
+          message: 'Cuenta creada. Si Supabase pide confirmación, revisa tu correo antes de entrar.',
+        };
+      }
+      return { success: true };
+    }
+
     const cleanEmail = userData.email.trim().toLowerCase();
     const existing = users.find(u => u.email.trim().toLowerCase() === cleanEmail);
     if (existing) {
@@ -504,7 +592,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       buildingName: assignedBuildingName,
       specialty: userData.specialty || (userData.role === 'worker' ? 'Mantenimiento General' : undefined),
       provider: userData.provider || 'email',
-      password: userData.password,
+      status: userData.status || 'active',
     };
 
     const newUsers = [...users, newUser];
@@ -519,6 +607,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
+    void supabase?.auth.signOut();
     setIsAuthenticated(false);
     localStorage.setItem('gest_v2_is_authenticated', 'false');
     showToast('Sesión Cerrada', 'Has salido de tu cuenta de SOFER Gestión', 'info');
@@ -660,6 +749,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 6000);
   };
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthReady(true);
+      return;
+    }
+
+    const applySession = (session: Session | null, silent: boolean) => {
+      if (!session?.user?.email) {
+        return;
+      }
+      const meta = session.user.user_metadata || {};
+      const provider = session.user.app_metadata?.provider === 'google' ? 'google' : 'email';
+      loginWithGoogle(
+        {
+          name: meta.full_name || meta.name || session.user.email,
+          email: session.user.email,
+          avatar: meta.avatar_url || meta.picture,
+          role: session.user.email.toLowerCase() === ADMIN_USER.email.toLowerCase() ? 'admin' : 'unassigned',
+          provider,
+        },
+        silent
+      );
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        if (session) applySession(session, true);
+        setAuthReady(true);
+        return;
+      }
+      if (event === 'SIGNED_IN' && session) {
+        applySession(session, false);
+        return;
+      }
+      if (event === 'SIGNED_OUT') {
+        setIsAuthenticated(false);
+        localStorage.setItem('gest_v2_is_authenticated', 'false');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -1710,6 +1846,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         allUsers: users,
         isAuthenticated,
+        authReady,
         setCurrentUser,
         addUser,
         updateUser,
@@ -1720,6 +1857,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         switchRole,
         loginWithEmail,
         loginWithGoogle,
+        signInWithGoogle,
         registerUser,
         logout,
         buildings,

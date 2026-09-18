@@ -20,6 +20,7 @@ const MainAppContent: React.FC = () => {
   const {
     currentUser,
     isAuthenticated,
+    authReady,
     selectedBuildingId,
     setSelectedBuildingId,
     selectedTicketId,
@@ -32,6 +33,14 @@ const MainAppContent: React.FC = () => {
   const [isAddBuildingOpen, setIsAddBuildingOpen] = useState(false);
   const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center text-[#0A2E6D] text-sm font-semibold">
+        Cargando sesión…
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
