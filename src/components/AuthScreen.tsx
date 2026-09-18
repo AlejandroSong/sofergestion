@@ -11,6 +11,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { googleClientId } from '../lib/googleAuth';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthScreen: React.FC = () => {
@@ -152,6 +153,11 @@ export const AuthScreen: React.FC = () => {
             <div className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-800">
               Falta <span className="font-mono">.env.local</span> con <span className="font-mono">VITE_SUPABASE_URL</span> y{' '}
               <span className="font-mono">VITE_SUPABASE_ANON_KEY</span>. El botón de Google no funcionará hasta configurarlo y reiniciar Vite.
+            </div>
+          )}
+          {isSupabaseConfigured && !googleClientId && (
+            <div className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-800">
+              Falta <span className="font-mono">VITE_GOOGLE_CLIENT_ID</span>. Sin eso, Google usa el callback de Supabase y puede fallar con 500.
             </div>
           )}
 
