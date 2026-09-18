@@ -11,6 +11,7 @@ import {
   INITIAL_NEIGHBOR_REQUESTS,
 } from '../data/initialData';
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isPrimaryAdmin, withSingleAdmin } from '../data/users';
+import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -514,11 +515,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         message: 'Falta configurar Supabase. Crea .env.local con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY y reinicia Vite.',
       };
     }
+    if (googleClientId) {
+      try {
+        const token = await requestGoogleIdToken(googleClientId);
+        const { error } = await supabase.auth.signInWithIdToken({
+          provider: 'google',
+          token,
+        });
+        if (error) {
+          return { success: false, message: error.message };
+        }
+        return { success: true };
+      } catch (err) {
+        return {
+          success: false,
+          message: err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google',
+        };
+      }
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
-        queryParams: { access_type: 'offline', prompt: 'select_account' },
+        redirectTo: `${window.location.origin}/`,
+        scopes: 'openid email profile',
       },
     });
     if (error) {

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SOFER Gestión — Google</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        if (!params.get('id_token') && !params.get('error')) {
+          params = new URLSearchParams(window.location.search);
+        }
+        var payload = {
+          type: 'sofer-google-id-token',
+          idToken: params.get('id_token'),
+          error: params.get('error_description') || params.get('error'),
+        };
+        if (window.opener) {
+          window.opener.postMessage(payload, window.location.origin);
+        }
+        window.close();
+      })();
+    </script>
+  </body>
+</html>
