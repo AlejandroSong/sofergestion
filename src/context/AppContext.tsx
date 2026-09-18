@@ -13,7 +13,6 @@ import {
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isPrimaryAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchProfiles, mergeUsersByEmail, persistProfile, upsertProfile } from '../lib/profiles';
-import { supabaseRedirectTo } from '../lib/authConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -536,36 +535,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         message: 'Falta configurar Supabase. Crea .env.local con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY y reinicia Vite.',
       };
     }
-    if (googleClientId) {
-      try {
-        const token = await requestGoogleIdToken(googleClientId);
-        const { error } = await supabase.auth.signInWithIdToken({
-          provider: 'google',
-          token,
-        });
-        if (error) {
-          return { success: false, message: error.message };
-        }
-        return { success: true };
-      } catch (err) {
-        return {
-          success: false,
-          message: err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google',
-        };
+    if (!googleClientId) {
+      return {
+        success: false,
+        message: 'Falta VITE_GOOGLE_CLIENT_ID. El login no usará el callback de Supabase.',
+      };
+    }
+    try {
+      const token = await requestGoogleIdToken(googleClientId);
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token,
+      });
+      if (error) {
+        return { success: false, message: error.message };
       }
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google',
+      };
     }
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: supabaseRedirectTo(),
-        scopes: 'openid email profile',
-      },
-    });
-    if (error) {
-      return { success: false, message: error.message };
-    }
-    return { success: true };
   };
 
   const registerUser = async (userData: {
