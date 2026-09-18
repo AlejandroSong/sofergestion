@@ -13,6 +13,7 @@ import {
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isPrimaryAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchProfiles, mergeUsersByEmail, persistProfile, upsertProfile } from '../lib/profiles';
+import { supabaseRedirectTo } from '../lib/authConfig';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -557,7 +558,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/`,
+        redirectTo: supabaseRedirectTo(),
         scopes: 'openid email profile',
       },
     });

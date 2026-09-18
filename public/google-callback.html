@@ -18,8 +18,10 @@
         };
         if (window.opener) {
           window.opener.postMessage(payload, window.location.origin);
+          window.close();
+          return;
         }
-        window.close();
+        window.location.replace(window.location.origin + '/');
       })();
     </script>
   </body>

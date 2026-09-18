@@ -1,8 +1,10 @@
-export const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+import { DEFAULT_GOOGLE_CLIENT_ID, googleRedirectUri } from './authConfig';
+
+export const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
 
 export function requestGoogleIdToken(clientId: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const redirectUri = `${window.location.origin}/google-callback.html`;
+    const redirectUri = googleRedirectUri();
     const nonce = crypto.randomUUID();
     const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     url.searchParams.set('client_id', clientId);
