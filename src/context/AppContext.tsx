@@ -10,6 +10,7 @@ import {
   INITIAL_NEIGHBOR_SERVICES,
   INITIAL_NEIGHBOR_REQUESTS,
 } from '../data/initialData';
+import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isPrimaryAdmin, withSingleAdmin } from '../data/users';
 import {
   Building,
   CommonArea,
@@ -182,25 +183,18 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load state from localStorage or initial defaults
   const [users, setUsers] = useState<User[]>(() => {
+    const alreadyReset = localStorage.getItem(ACCOUNTS_RESET_KEY) === ACCOUNTS_RESET_VALUE;
+    if (!alreadyReset) {
+      localStorage.setItem('gest_v2_users', JSON.stringify([ADMIN_USER]));
+      localStorage.setItem('gest_v2_current_user', JSON.stringify(ADMIN_USER));
+      localStorage.setItem('gest_v2_is_authenticated', 'true');
+      localStorage.setItem(ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE);
+      return [ADMIN_USER];
+    }
+
     const saved = localStorage.getItem('gest_v2_users');
     const loaded: User[] = saved ? JSON.parse(saved) : INITIAL_USERS;
-    return loaded.map((u) => {
-      if (u.role === 'president') {
-        return {
-          ...u,
-          unitOrArea: u.unitOrArea || 'Planta 4ª Ático B',
-          taxReturnsRemaining: u.taxReturnsRemaining ?? 2,
-          feeBalance: u.feeBalance ?? 0,
-          monthlyFee: u.monthlyFee ?? 95,
-          feeFrequency: u.feeFrequency || 'mensual',
-          lastPaymentAmount: u.lastPaymentAmount ?? 95,
-          lastPaymentDate: u.lastPaymentDate || '2026-08-05',
-          lastPaymentConcept: u.lastPaymentConcept || 'Cuota ordinaria de comunidad - Agosto 2026',
-          nextDueDate: u.nextDueDate || '2026-09-05',
-        };
-      }
-      return u;
-    });
+    return withSingleAdmin(loaded);
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -210,43 +204,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const saved = localStorage.getItem('gest_v2_current_user');
-    const u: User = saved ? JSON.parse(saved) : INITIAL_USERS[0];
-    if (u.role === 'president') {
-      return {
-        ...u,
-        unitOrArea: u.unitOrArea || 'Planta 4ª Ático B',
-        taxReturnsRemaining: u.taxReturnsRemaining ?? 2,
-        feeBalance: u.feeBalance ?? 0,
-        monthlyFee: u.monthlyFee ?? 95,
-        feeFrequency: u.feeFrequency || 'mensual',
-        lastPaymentAmount: u.lastPaymentAmount ?? 95,
-        lastPaymentDate: u.lastPaymentDate || '2026-08-05',
-        lastPaymentConcept: u.lastPaymentConcept || 'Cuota ordinaria de comunidad - Agosto 2026',
-        nextDueDate: u.nextDueDate || '2026-09-05',
-      };
+    if (!saved) return ADMIN_USER;
+    const u: User = JSON.parse(saved);
+    if (isDemoAccount(u) || isPrimaryAdmin(u)) {
+      return ADMIN_USER;
     }
     return u;
   });
 
-  // Force patch for demo user to support new admin email in case of cached localStorage
+  // Keep David as the seeded admin and drop leftover demo accounts
   useEffect(() => {
-    let usersUpdated = false;
-    const patchedUsers = users.map(u => {
-      if (u.id === 'user-admin-1' && u.email === 'admin@gestioninmuebles.com') {
-        usersUpdated = true;
-        return { ...u, email: 'support@revengeofpirates.com', name: 'Admin Principal' };
-      }
-      return u;
-    });
+    const nextUsers = withSingleAdmin(users);
+    const usersChanged =
+      nextUsers.length !== users.length ||
+      nextUsers.some((u, i) => u.id !== users[i]?.id || u.email !== users[i]?.email || u.name !== users[i]?.name);
 
-    if (usersUpdated) {
-      setUsers(patchedUsers);
-      localStorage.setItem('gest_v2_users', JSON.stringify(patchedUsers));
-      
-      if (currentUser.id === 'user-admin-1' && currentUser.email === 'admin@gestioninmuebles.com') {
-        const updatedCurrent = { ...currentUser, email: 'support@revengeofpirates.com', name: 'Admin Principal' };
-        setCurrentUser(updatedCurrent);
-        localStorage.setItem('gest_v2_current_user', JSON.stringify(updatedCurrent));
+    if (usersChanged) {
+      setUsers(nextUsers);
+      localStorage.setItem('gest_v2_users', JSON.stringify(nextUsers));
+    }
+
+    if (isDemoAccount(currentUser) || isPrimaryAdmin(currentUser)) {
+      const needsAdminSync =
+        currentUser.id !== ADMIN_USER.id ||
+        currentUser.email !== ADMIN_USER.email ||
+        currentUser.name !== ADMIN_USER.name ||
+        currentUser.role !== 'admin';
+      if (needsAdminSync) {
+        setCurrentUser(ADMIN_USER);
+        localStorage.setItem('gest_v2_current_user', JSON.stringify(ADMIN_USER));
       }
     }
   }, [users, currentUser]);
@@ -331,7 +317,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleUserStatus = (id: string) => {
-    if (id === 'user-admin-1') {
+    if (id === ADMIN_USER.id || id === 'user-admin-1') {
       showToast('Acción Bloqueada', 'El Administrador Principal no puede ser suspendido.', 'alert');
       return;
     }
@@ -382,7 +368,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteUser = (id: string) => {
-    if (id === 'user-admin-1') {
+    if (id === ADMIN_USER.id || id === 'user-admin-1') {
       showToast('Acción Bloqueada', 'No se puede eliminar la cuenta del Administrador Principal.', 'alert');
       return; // Protection for the first admin
     }

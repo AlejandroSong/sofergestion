@@ -3,8 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Building2,
   ShieldCheck,
-  UserCheck,
-  Wrench,
   Mail,
   Lock,
   User,
@@ -18,13 +16,13 @@ import {
   Info,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { ADMIN_USER } from '../data/users';
 
 export const AuthScreen: React.FC = () => {
   const {
     loginWithEmail,
     loginWithGoogle,
     registerUser,
-    allUsers,
   } = useApp();
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -106,7 +104,7 @@ export const AuthScreen: React.FC = () => {
             SOFER <span className="text-[#0A2E6D]">Gestión</span>
           </h1>
           <p className="text-xs text-[#5A6B82] max-w-md mx-auto">
-            Plataforma Integral con Autenticación Segura y Asignación de Roles por el Alejandro Mendoza
+            Plataforma Integral con Autenticación Segura y Asignación de Roles por el administrador
           </p>
         </div>
 
@@ -148,7 +146,7 @@ export const AuthScreen: React.FC = () => {
           <div className="mb-5 p-3 bg-[#171717] border border-[#2B2B2B] rounded-2xl flex items-start gap-2.5 text-[11px] text-[#5A6B82]">
             <ShieldAlert className="w-4 h-4 text-[#0A2E6D] shrink-0 mt-0.5" />
             <p>
-              <strong className="text-[#16202E]">Seguridad de Acceso:</strong> El inicio de sesión es requerido antes de asignar un rol. Los usuarios no pueden elegirse o cambiarse roles entre sí; únicamente el <strong className="text-[#0A2E6D]">Alejandro Mendoza de fincas</strong> asigna y edita los permisos.
+              <strong className="text-[#16202E]">Seguridad de Acceso:</strong> El inicio de sesión es requerido antes de asignar un rol. Los usuarios no pueden elegirse o cambiarse roles entre sí; únicamente el <strong className="text-[#0A2E6D]">administrador de fincas</strong> asigna y edita los permisos.
             </p>
           </div>
 
@@ -322,7 +320,7 @@ export const AuthScreen: React.FC = () => {
                   Asignación de Rol Centralizada
                 </p>
                 <p>
-                  Tu cuenta será creada inmediatamente. Una vez autenticado, el <strong className="text-[#16202E]">Alejandro Mendoza</strong> le asignará tu rol correspondiente (Presidente de la comunidad, Trabajador o Admin).
+                  Tu cuenta será creada inmediatamente. Una vez autenticado, el <strong className="text-[#16202E]">administrador</strong> le asignará tu rol correspondiente (Presidente de la comunidad, Trabajador o Admin).
                 </p>
               </div>
 
@@ -336,72 +334,25 @@ export const AuthScreen: React.FC = () => {
             </form>
           )}
 
-          {/* Quick Demo Access Bar */}
+          {/* Quick admin access */}
           <div className="mt-6 pt-5 border-t border-[#E2E8F0]">
             <p className="text-[11px] font-bold tracking-wider uppercase text-[#5A6B82] mb-2.5 text-center">
-              Acceso Rápido con Cuentas y Roles Preconfigurados
+              Acceso de administrador
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => loginWithEmail('support@revengeofpirates.com')}
-                className="p-2.5 bg-[#F4F6FA] hover:bg-[#E8EFF9] border border-[#E2E8F0] hover:border-[#0A2E6D]/50 rounded-xl text-left transition-colors cursor-pointer"
-              >
-                <span className="block text-[10px] font-bold text-[#0A2E6D] uppercase flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" />
-                  Admin
-                </span>
-                <span className="block text-xs font-semibold text-[#16202E] truncate">
-                  Admin Principal
-                </span>
-                <span className="block text-[10px] text-[#5A6B82]">Control Total</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => loginWithEmail('alvaro.castillo@email.es')}
-                className="p-2.5 bg-[#F4F6FA] hover:bg-[#E8EFF9] border border-[#E2E8F0] hover:border-[#128480]/50 rounded-xl text-left transition-colors cursor-pointer"
-              >
-                <span className="block text-[10px] font-bold text-[#128480] uppercase flex items-center gap-1">
-                  <Building2 className="w-3 h-3" />
-                  Vecino
-                </span>
-                <span className="block text-xs font-semibold text-[#16202E] truncate">
-                  Vecino Demo
-                </span>
-                <span className="block text-[10px] text-[#5A6B82]">Vivienda</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => loginWithEmail('fernando.rios@comunidad.es')}
-                className="p-2.5 bg-[#F4F6FA] hover:bg-[#E8EFF9] border border-[#E2E8F0] hover:border-blue-500/50 rounded-xl text-left transition-colors cursor-pointer"
-              >
-                <span className="block text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1">
-                  <Building2 className="w-3 h-3" />
-                  Presidenta
-                </span>
-                <span className="block text-xs font-semibold text-[#16202E] truncate">
-                  Fernando Ríos
-                </span>
-                <span className="block text-[10px] text-[#5A6B82]">Las Palmas 402</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => loginWithEmail('daniel.ortega@servicios.es')}
-                className="p-2.5 bg-[#F4F6FA] hover:bg-[#E8EFF9] border border-[#E2E8F0] hover:border-green-500/50 rounded-xl text-left transition-colors cursor-pointer"
-              >
-                <span className="block text-[10px] font-bold text-green-600 uppercase flex items-center gap-1">
-                  <Wrench className="w-3 h-3" />
-                  Trabajador
-                </span>
-                <span className="block text-xs font-semibold text-[#16202E] truncate">
-                  Daniel Ortega
-                </span>
-                <span className="block text-[10px] text-[#5A6B82]">Electricidad</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => loginWithEmail(ADMIN_USER.email)}
+              className="w-full p-2.5 bg-[#F4F6FA] hover:bg-[#E8EFF9] border border-[#E2E8F0] hover:border-[#0A2E6D]/50 rounded-xl text-left transition-colors cursor-pointer"
+            >
+              <span className="block text-[10px] font-bold text-[#0A2E6D] uppercase flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3" />
+                Admin
+              </span>
+              <span className="block text-xs font-semibold text-[#16202E] truncate">
+                {ADMIN_USER.name}
+              </span>
+              <span className="block text-[10px] text-[#5A6B82]">{ADMIN_USER.email}</span>
+            </button>
           </div>
         </div>
 
@@ -485,7 +436,7 @@ export const AuthScreen: React.FC = () => {
                   <p className="text-[#16202E] font-semibold text-[11px] mb-1">
                     Nota de Asignación de Roles:
                   </p>
-                  Si es tu primer acceso con Google, ingresarás con tu cuenta verificada para que el Alejandro Mendoza te asigne tu edificio o especialidad de trabajador.
+                  Si es tu primer acceso con Google, ingresarás con tu cuenta verificada para que el administrador te asigne tu edificio o especialidad de trabajador.
                 </div>
               </div>
 

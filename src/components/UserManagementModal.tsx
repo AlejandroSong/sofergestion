@@ -614,7 +614,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               {/* Users List */}
               <div className="space-y-2.5">
                 {filteredUsers.map((user) => {
-                  const isFirstAdmin = user.id === 'user-admin-1';
+                  const isFirstAdmin = user.id === 'usr-adm-99' || user.id === 'user-admin-1';
                   const isCurrentUser = currentUser.id === user.id;
                   const isEditingThisUser = editingUserId === user.id;
                   const isSuspended = user.status === 'suspended';
