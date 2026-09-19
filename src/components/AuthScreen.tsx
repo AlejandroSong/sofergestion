@@ -1,14 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { useApp } from '../context/AppContext';
-import { initGoogleButton } from '../lib/googleGis';
-import { consumeGoogleRedirectResult, googleClientId, isInAppShell, startGoogleRedirect } from '../lib/googleAuth';
+import { consumeGoogleRedirectResult, googleClientId, startGoogleRedirect } from '../lib/googleAuth';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthScreen: React.FC = () => {
   const { signInWithGoogleCredential } = useApp();
-  const buttonHostRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
@@ -25,25 +23,6 @@ export const AuthScreen: React.FC = () => {
         if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
       });
     }
-  }, [signInWithGoogleCredential]);
-
-  useEffect(() => {
-    const host = buttonHostRef.current;
-    if (!host || !isSupabaseConfigured || !googleClientId || isInAppShell()) return;
-
-    void initGoogleButton(
-      host,
-      async (token) => {
-        setErrorMessage(null);
-        setIsBusy(true);
-        const res = await signInWithGoogleCredential(token);
-        setIsBusy(false);
-        if (!res.success) {
-          setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
-        }
-      },
-      (message) => setErrorMessage(message)
-    );
   }, [signInWithGoogleCredential]);
 
   return (
@@ -90,21 +69,18 @@ export const AuthScreen: React.FC = () => {
 
           <div className="flex flex-col items-center gap-3">
             {isBusy && <p className="text-xs text-[#3D6FA8] font-medium">Entrando…</p>}
-            {!isInAppShell() && <div ref={buttonHostRef} className="min-h-[44px] flex justify-center" />}
-            {isInAppShell() && (
-              <button
-                type="button"
-                disabled={isBusy || !isSupabaseConfigured || !googleClientId}
-                onClick={() => {
-                  setErrorMessage(null);
-                  setIsBusy(true);
-                  startGoogleRedirect(googleClientId);
-                }}
-                className="w-full max-w-[336px] py-2.5 px-4 rounded-full border border-[#D5E4F5] bg-white text-sm font-semibold text-[#1E3A5F] cursor-pointer disabled:opacity-50"
-              >
-                Continuar con Google
-              </button>
-            )}
+            <button
+              type="button"
+              disabled={isBusy || !isSupabaseConfigured || !googleClientId}
+              onClick={() => {
+                setErrorMessage(null);
+                setIsBusy(true);
+                startGoogleRedirect(googleClientId);
+              }}
+              className="w-full max-w-[336px] py-2.5 px-4 rounded-full border border-[#D5E4F5] bg-white text-sm font-semibold text-[#1E3A5F] cursor-pointer disabled:opacity-50"
+            >
+              Continuar con Google
+            </button>
           </div>
         </div>
 
