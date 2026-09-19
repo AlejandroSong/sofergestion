@@ -14,8 +14,8 @@ export function isNativeShell(): boolean {
   return false;
 }
 
-export function isWrappedWebView(): boolean {
-  return isAndroidWebView() && !isNativeShell();
+export function isInAppShell(): boolean {
+  return isNativeShell() || isAndroidWebView();
 }
 
 export function consumeGoogleRedirectResult(): { idToken?: string; error?: string } {
@@ -42,14 +42,14 @@ export function googleAuthUrl(clientId: string): string {
 }
 
 export function startGoogleRedirect(clientId: string) {
-  window.location.assign(googleAuthUrl(clientId));
+  window.location.replace(googleAuthUrl(clientId));
 }
 
 export async function requestGoogleIdToken(clientId: string): Promise<string> {
   if (!clientId) {
     throw new Error('Falta el Client ID de Google');
   }
-  if (isWrappedWebView()) {
+  if (isInAppShell()) {
     startGoogleRedirect(clientId);
     return new Promise(() => undefined);
   }

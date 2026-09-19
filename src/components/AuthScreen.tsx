@@ -3,7 +3,7 @@ import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { useApp } from '../context/AppContext';
 import { initGoogleButton } from '../lib/googleGis';
-import { consumeGoogleRedirectResult, googleClientId, isWrappedWebView, startGoogleRedirect } from '../lib/googleAuth';
+import { consumeGoogleRedirectResult, googleClientId, isInAppShell, startGoogleRedirect } from '../lib/googleAuth';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthScreen: React.FC = () => {
@@ -29,7 +29,7 @@ export const AuthScreen: React.FC = () => {
 
   useEffect(() => {
     const host = buttonHostRef.current;
-    if (!host || !isSupabaseConfigured || !googleClientId || isWrappedWebView()) return;
+    if (!host || !isSupabaseConfigured || !googleClientId || isInAppShell()) return;
 
     void initGoogleButton(
       host,
@@ -90,8 +90,8 @@ export const AuthScreen: React.FC = () => {
 
           <div className="flex flex-col items-center gap-3">
             {isBusy && <p className="text-xs text-[#3D6FA8] font-medium">Entrando…</p>}
-            {!isWrappedWebView() && <div ref={buttonHostRef} className="min-h-[44px] flex justify-center" />}
-            {isWrappedWebView() && (
+            {!isInAppShell() && <div ref={buttonHostRef} className="min-h-[44px] flex justify-center" />}
+            {isInAppShell() && (
               <button
                 type="button"
                 disabled={isBusy || !isSupabaseConfigured || !googleClientId}

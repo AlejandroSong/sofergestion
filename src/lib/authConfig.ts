@@ -14,7 +14,10 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
 export const googleClientId = DEFAULT_GOOGLE_CLIENT_ID;
 
 export function googleRedirectUri(): string {
-  const origin = window.location.origin.replace(/\/$/, '');
+  const origin =
+    typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? PRODUCTION_ORIGIN
+      : window.location.origin.replace(/\/$/, '');
   return `${origin}${GOOGLE_CALLBACK_PATH}`;
 }
 
