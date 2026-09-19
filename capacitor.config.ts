@@ -5,7 +5,7 @@ const config = {
   server: {
     androidScheme: 'https',
     iosScheme: 'https',
-    hostname: 'localhost',
+    hostname: 'sofergestion.es',
     allowNavigation: [
       'accounts.google.com',
       '*.google.com',
