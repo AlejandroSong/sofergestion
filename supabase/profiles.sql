@@ -20,15 +20,29 @@ create table if not exists public.profiles (
 
 create unique index if not exists profiles_email_lower_idx on public.profiles (lower(email));
 
+create or replace function public.is_app_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid()
+      and role = 'admin'
+      and coalesce(status, 'active') is distinct from 'suspended'
+  );
+$$;
+
+grant execute on function public.is_app_admin() to authenticated, anon;
+
 alter table public.profiles enable row level security;
 
 drop policy if exists "profiles_select" on public.profiles;
 create policy "profiles_select"
   on public.profiles for select to authenticated
-  using (
-    auth.uid() = id
-    or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('DavidAlejandroRoblesMarquez@gmail.com')
-  );
+  using (auth.uid() = id or public.is_app_admin());
 
 drop policy if exists "profiles_insert" on public.profiles;
 create policy "profiles_insert"
@@ -37,19 +51,24 @@ create policy "profiles_insert"
     auth.uid() = id
     and (
       role = 'unassigned'
-      or lower(email) = lower('DavidAlejandroRoblesMarquez@gmail.com')
+      or public.is_app_admin()
+      or (
+        role = 'admin'
+        and not exists (
+          select 1 from public.profiles p
+          where p.role = 'admin'
+            and coalesce(p.status, 'active') is distinct from 'suspended'
+        )
+      )
     )
   );
 
 drop policy if exists "profiles_update" on public.profiles;
 create policy "profiles_update"
   on public.profiles for update to authenticated
-  using (
-    auth.uid() = id
-    or lower(coalesce(auth.jwt() ->> 'email', '')) = lower('DavidAlejandroRoblesMarquez@gmail.com')
-  )
+  using (auth.uid() = id or public.is_app_admin())
   with check (
-    lower(coalesce(auth.jwt() ->> 'email', '')) = lower('DavidAlejandroRoblesMarquez@gmail.com')
+    public.is_app_admin()
     or (
       auth.uid() = id
       and role is not distinct from (select p.role from public.profiles p where p.id = auth.uid())
@@ -59,9 +78,25 @@ create policy "profiles_update"
 drop policy if exists "profiles_delete" on public.profiles;
 create policy "profiles_delete"
   on public.profiles for delete to authenticated
-  using (
-    lower(coalesce(auth.jwt() ->> 'email', '')) = lower('DavidAlejandroRoblesMarquez@gmail.com')
-  );
+  using (public.is_app_admin());
+
+create table if not exists public.access_revocations (
+  email text primary key,
+  revoked_at timestamptz default now()
+);
+
+alter table public.access_revocations enable row level security;
+
+drop policy if exists "revocations_select" on public.access_revocations;
+create policy "revocations_select"
+  on public.access_revocations for select to authenticated
+  using (true);
+
+drop policy if exists "revocations_write" on public.access_revocations;
+create policy "revocations_write"
+  on public.access_revocations for all to authenticated
+  using (public.is_app_admin())
+  with check (public.is_app_admin());
 
 alter table public.profiles replica identity full;
 

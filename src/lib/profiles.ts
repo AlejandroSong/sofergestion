@@ -1,5 +1,5 @@
 import type { User } from '../types';
-import { ADMIN_USER, isPrimaryAdmin } from '../data/users';
+import { ADMIN_USER } from '../data/users';
 import { supabase } from './supabase';
 
 type ProfileRow = {
@@ -28,12 +28,11 @@ function isUuid(value: string | undefined): value is string {
 
 export function profileToUser(row: ProfileRow): User {
   const email = (row.email || '').trim();
-  const isAdmin = email.toLowerCase() === ADMIN_USER.email.toLowerCase();
   return {
-    id: isAdmin ? ADMIN_USER.id : row.id,
+    id: row.id,
     name: row.name || email.split('@')[0],
     email,
-    role: isAdmin ? 'admin' : row.role || 'unassigned',
+    role: (row.role as User['role']) || 'unassigned',
     avatar: row.avatar || ADMIN_USER.avatar,
     phone: row.phone || '+34 600 000 000',
     buildingId: row.building_id || undefined,
@@ -106,7 +105,21 @@ export async function fetchProfiles(): Promise<User[]> {
 
 export async function persistProfile(user: User, authUserId?: string) {
   if (!supabase) return;
-  const id = isUuid(user.id) ? user.id : authUserId;
+  let id = isUuid(user.id) ? user.id : undefined;
+  if (!id) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', user.email.trim().toLowerCase())
+      .maybeSingle();
+    id = data?.id;
+  }
+  if (!isUuid(id) && isUuid(authUserId)) {
+    const { data: self } = await supabase.auth.getUser();
+    if (self.user?.email?.trim().toLowerCase() === user.email.trim().toLowerCase()) {
+      id = authUserId;
+    }
+  }
   if (!isUuid(id)) return;
 
   const payload: Record<string, unknown> = {
@@ -115,7 +128,7 @@ export async function persistProfile(user: User, authUserId?: string) {
     name: user.name,
     avatar: user.avatar,
     phone: user.phone || null,
-    role: isPrimaryAdmin(user) ? 'admin' : user.role,
+    role: user.role,
     building_id: user.buildingId ?? null,
     building_name: user.buildingName ?? null,
     specialty: user.specialty ?? null,
@@ -128,6 +141,29 @@ export async function persistProfile(user: User, authUserId?: string) {
   if (error) console.warn('No se pudo guardar el rol:', error.message);
 }
 
+export async function revokeAccess(email: string) {
+  if (!supabase) return;
+  const normalized = email.trim().toLowerCase();
+  await supabase.from('access_revocations').upsert({ email: normalized });
+  await supabase.from('profiles').delete().eq('email', normalized);
+}
+
+export async function clearRevocation(email: string) {
+  if (!supabase) return;
+  await supabase.from('access_revocations').delete().eq('email', email.trim().toLowerCase());
+}
+
+export async function isEmailRevoked(email: string): Promise<boolean> {
+  if (!supabase) return false;
+  const { data, error } = await supabase
+    .from('access_revocations')
+    .select('email')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle();
+  if (error) return false;
+  return Boolean(data);
+}
+
 export function mergeUsersByEmail(local: User[], remote: User[]): User[] {
   const map = new Map<string, User>();
   for (const user of local) {
@@ -136,12 +172,7 @@ export function mergeUsersByEmail(local: User[], remote: User[]): User[] {
   for (const user of remote) {
     const key = user.email.trim().toLowerCase();
     const prev = map.get(key);
-    map.set(
-      key,
-      prev
-        ? { ...prev, ...user, id: isPrimaryAdmin(user) || isPrimaryAdmin(prev) ? ADMIN_USER.id : user.id }
-        : user
-    );
+    map.set(key, prev ? { ...prev, ...user } : user);
   }
   return [...map.values()];
 }

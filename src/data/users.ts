@@ -42,7 +42,16 @@ export const isDemoAccount = (user: User) => {
   return DEMO_EMAILS.has((user.email || '').trim().toLowerCase());
 };
 
+export const isLastActiveAdmin = (user: User, allUsers: User[]) => {
+  if (user.role !== 'admin' || user.status === 'suspended') return false;
+  const admins = allUsers.filter((u) => u.role === 'admin' && u.status !== 'suspended');
+  return admins.length <= 1;
+};
+
 export const withSingleAdmin = (loaded: User[]): User[] => {
-  const others = loaded.filter((u) => !isPrimaryAdmin(u) && !isDemoAccount(u));
-  return [ADMIN_USER, ...others];
+  const others = loaded.filter((u) => !isDemoAccount(u));
+  if (!others.length) return [ADMIN_USER];
+  const hasAdmin = others.some((u) => u.role === 'admin' && u.status !== 'suspended');
+  if (hasAdmin) return others;
+  return [{ ...others[0], role: 'admin', status: 'active' }, ...others.slice(1)];
 };

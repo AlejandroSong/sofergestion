@@ -10,10 +10,10 @@ import {
   INITIAL_NEIGHBOR_SERVICES,
   INITIAL_NEIGHBOR_REQUESTS,
 } from '../data/initialData';
-import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isPrimaryAdmin, withSingleAdmin } from '../data/users';
+import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isLastActiveAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchInbox, insertInbox, markInboxRead, remoteToNotification } from '../lib/inbox';
-import { fetchProfiles, mergeUsersByEmail, persistProfile, upsertProfile } from '../lib/profiles';
+import { clearRevocation, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, upsertProfile } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -72,7 +72,7 @@ interface AppContextType {
   deleteUser: (id: string) => void;
   switchRole: (role: Role, userId?: string) => void;
   loginWithEmail: (email: string, password?: string) => Promise<{ success: boolean; message?: string }>;
-  loginWithGoogle: (googleData: { name: string; email: string; avatar?: string; role?: Role; buildingId?: string; specialty?: string }) => { success: boolean; message?: string };
+  loginWithGoogle: (googleData: { id?: string; name: string; email: string; avatar?: string; role?: Role; buildingId?: string; specialty?: string }) => { success: boolean; message?: string };
   signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
   signInWithGoogleCredential: (token: string) => Promise<{ success: boolean; message?: string }>;
   registerUser: (userData: { name: string; email: string; password?: string; role: Role; phone?: string; buildingId?: string; specialty?: string; provider?: 'email' | 'google'; status?: 'active' | 'suspended' }) => Promise<{ success: boolean; message?: string }>;
@@ -217,34 +217,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem('gest_v2_current_user');
     if (!saved) return ADMIN_USER;
     const u: User = JSON.parse(saved);
-    if (isDemoAccount(u) || isPrimaryAdmin(u)) {
+    if (isDemoAccount(u)) {
       return ADMIN_USER;
     }
     return u;
   });
 
-  // Keep David as the seeded admin and drop leftover demo accounts
+  // Drop leftover demo accounts without forcing David back as admin
   useEffect(() => {
     const nextUsers = withSingleAdmin(users);
     const usersChanged =
       nextUsers.length !== users.length ||
-      nextUsers.some((u, i) => u.id !== users[i]?.id || u.email !== users[i]?.email || u.name !== users[i]?.name);
+      nextUsers.some((u, i) => u.id !== users[i]?.id || u.email !== users[i]?.email || u.name !== users[i]?.name || u.role !== users[i]?.role);
 
     if (usersChanged) {
       setUsers(nextUsers);
       localStorage.setItem('gest_v2_users', JSON.stringify(nextUsers));
-    }
-
-    if (isDemoAccount(currentUser) || isPrimaryAdmin(currentUser)) {
-      const needsAdminSync =
-        currentUser.id !== ADMIN_USER.id ||
-        currentUser.email !== ADMIN_USER.email ||
-        currentUser.name !== ADMIN_USER.name ||
-        currentUser.role !== 'admin';
-      if (needsAdminSync) {
-        setCurrentUser(ADMIN_USER);
-        localStorage.setItem('gest_v2_current_user', JSON.stringify(ADMIN_USER));
-      }
     }
   }, [users, currentUser]);
 
@@ -320,15 +308,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
 
-    if (currentUser.id === id) {
-      const updatedUser = newUsers.find((u) => u.id === id);
-      if (updatedUser) setCurrentUser(updatedUser);
-    }
     const persisted = newUsers.find((u) => u.id === id);
+    if (
+      persisted &&
+      (currentUser.id === id ||
+        currentUser.email.trim().toLowerCase() === persisted.email.trim().toLowerCase())
+    ) {
+      setCurrentUser(persisted);
+      localStorage.setItem('gest_v2_current_user', JSON.stringify(persisted));
+    }
     if (persisted) {
-      void supabase?.auth.getUser().then(({ data }) => {
-        void persistProfile(persisted, data.user?.id);
-      });
+      void clearRevocation(persisted.email);
+      void persistProfile(persisted);
     }
     showToast('Rol Actualizado', 'Se han actualizado libremente los permisos del usuario', 'success');
   };
@@ -336,8 +327,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const toggleUserStatus = (id: string) => {
     const targetUser = users.find(u => u.id === id);
     if (!targetUser) return;
-    if (isPrimaryAdmin(targetUser)) {
-      showToast('Acción Bloqueada', 'El Administrador Principal no puede ser suspendido.', 'alert');
+    if (isLastActiveAdmin(targetUser, users)) {
+      showToast('Acción Bloqueada', 'No puedes suspender al único administrador activo.', 'alert');
       return;
     }
 
@@ -347,9 +338,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
     const updated = newUsers.find((u) => u.id === id);
     if (updated) {
-      void supabase?.auth.getUser().then(({ data }) => {
-        void persistProfile(updated, data.user?.id);
-      });
+      void persistProfile(updated);
     }
 
     if (currentUser.id === id && newStatus === 'suspended') {
@@ -392,25 +381,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteUser = (id: string) => {
     const userToDelete = users.find((u) => u.id === id);
-    if (!userToDelete || isPrimaryAdmin(userToDelete)) {
-      showToast('Acción Bloqueada', 'No se puede eliminar la cuenta del Administrador Principal.', 'alert');
+    if (!userToDelete) return;
+    if (isLastActiveAdmin(userToDelete, users)) {
+      showToast(
+        'Acción Bloqueada',
+        'No puedes eliminar al único administrador. Asigna otro admin antes de quitar este acceso.',
+        'alert'
+      );
       return;
     }
     const newUsers = users.filter((u) => u.id !== id);
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
-    if (supabase) {
-      if (/^[0-9a-f-]{36}$/i.test(userToDelete.id)) {
-        void supabase.from('profiles').delete().eq('id', userToDelete.id);
-      } else {
-        void supabase.from('profiles').delete().eq('email', userToDelete.email.trim().toLowerCase());
-      }
+    void revokeAccess(userToDelete.email);
+    if (supabase && /^[0-9a-f-]{36}$/i.test(userToDelete.id)) {
+      void supabase.from('profiles').delete().eq('id', userToDelete.id);
     }
 
-    if (currentUser.id === id) {
-      setCurrentUser(newUsers[0] || INITIAL_USERS[0]);
+    const deletedIsSelf =
+      currentUser.id === id ||
+      currentUser.email.trim().toLowerCase() === userToDelete.email.trim().toLowerCase();
+    if (deletedIsSelf) {
+      void supabase?.auth.signOut();
+      setIsAuthenticated(false);
+      localStorage.setItem('gest_v2_is_authenticated', 'false');
+      showToast('Acceso eliminado', 'Esta cuenta ya no tiene acceso a SOFER Gestión.', 'alert');
+      return;
     }
-    showToast('Usuario Eliminado', `El usuario ${userToDelete.name} y sus roles fueron removidos del sistema`, 'info');
+    showToast('Usuario Eliminado', `${userToDelete.name} perdió todo el acceso al sistema.`, 'info');
   };
 
   const loginWithEmail = async (email: string, password?: string): Promise<{ success: boolean; message?: string }> => {
@@ -454,6 +452,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loginWithGoogle = (
     googleData: {
+      id?: string;
       name: string;
       email: string;
       avatar?: string;
@@ -474,12 +473,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           message: 'Esta cuenta de Google está suspendida en el sistema.',
         };
       }
+      const nextId =
+        googleData.id && /^[0-9a-f-]{36}$/i.test(googleData.id) ? googleData.id : existing.id;
       const nextUser = {
         ...existing,
+        id: nextId,
         name: googleData.name || existing.name,
         avatar: googleData.avatar || existing.avatar,
         provider: googleData.provider || existing.provider || 'google',
       };
+      if (nextId !== existing.id) {
+        const synced = users.map((u) => (u.id === existing.id ? nextUser : u));
+        setUsers(synced);
+        localStorage.setItem('gest_v2_users', JSON.stringify(synced));
+      }
       setCurrentUser(nextUser);
       setIsAuthenticated(true);
       localStorage.setItem('gest_v2_is_authenticated', 'true');
@@ -496,24 +503,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       assignedBuildingName = b?.name;
     }
 
-    const isAdminEmail = cleanEmail === ADMIN_USER.email.toLowerCase();
-    const newUser: User = isAdminEmail
-      ? { ...ADMIN_USER, avatar: googleData.avatar || ADMIN_USER.avatar, provider: googleData.provider || 'google' }
-      : {
-          id: `user-google-${Date.now()}`,
-          name: googleData.name || cleanEmail.split('@')[0],
-          email: cleanEmail,
-          role: googleData.role || 'unassigned',
-          avatar: googleData.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
-          phone: '+34 600 000 000',
-          buildingId: googleData.buildingId,
-          buildingName: assignedBuildingName,
-          specialty: googleData.specialty,
-          provider: googleData.provider || 'google',
-          status: 'active',
-        };
+    const hasActiveAdmin = users.some((u) => u.role === 'admin' && u.status !== 'suspended');
+    const bootstrapAdmin = !hasActiveAdmin && cleanEmail === ADMIN_USER.email.toLowerCase();
+    const newUser: User = {
+      id: googleData.id && /^[0-9a-f-]{36}$/i.test(googleData.id) ? googleData.id : `user-google-${Date.now()}`,
+      name: googleData.name || (bootstrapAdmin ? ADMIN_USER.name : cleanEmail.split('@')[0]),
+      email: cleanEmail,
+      role: bootstrapAdmin ? 'admin' : googleData.role || 'unassigned',
+      avatar: googleData.avatar || ADMIN_USER.avatar,
+      phone: '+34 600 000 000',
+      buildingId: googleData.buildingId,
+      buildingName: assignedBuildingName,
+      specialty: googleData.specialty,
+      provider: googleData.provider || 'google',
+      status: 'active',
+    };
 
-    const newUsers = isAdminEmail ? withSingleAdmin(users) : [...users, newUser];
+    const newUsers = [...users.filter((u) => u.email.trim().toLowerCase() !== cleanEmail), newUser];
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
     setCurrentUser(newUser);
@@ -522,8 +528,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('gest_v2_current_user', JSON.stringify(newUser));
     if (!silent) {
       showToast(
-        isAdminEmail ? 'Sesión Iniciada' : 'Cuenta Creada con Google',
-        isAdminEmail ? `¡Bienvenido, ${newUser.name}!` : `Cuenta de ${newUser.name} registrada. El administrador asignará tu rol.`,
+        bootstrapAdmin ? 'Sesión Iniciada' : 'Cuenta Creada con Google',
+        bootstrapAdmin ? `¡Bienvenido, ${newUser.name}!` : `Cuenta de ${newUser.name} registrada. El administrador asignará tu rol.`,
         'success'
       );
     }
@@ -848,35 +854,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const meta = session.user.user_metadata || {};
       const provider = session.user.app_metadata?.provider === 'google' ? 'google' : 'email';
       const email = session.user.email;
-      loginWithGoogle(
-        {
+      void (async () => {
+        if (await isEmailRevoked(email)) {
+          await supabase.auth.signOut();
+          setIsAuthenticated(false);
+          localStorage.setItem('gest_v2_is_authenticated', 'false');
+          showToast('Acceso denegado', 'Esta cuenta fue eliminada y ya no tiene acceso a SOFER Gestión.', 'alert');
+          return;
+        }
+        loginWithGoogle(
+          {
+            id: session.user.id,
+            name: meta.full_name || meta.name || email,
+            email,
+            avatar: meta.avatar_url || meta.picture,
+            provider,
+          },
+          silent
+        );
+        const pendingUser: User = {
+          id: session.user.id,
           name: meta.full_name || meta.name || email,
           email,
-          avatar: meta.avatar_url || meta.picture,
-          role: email.toLowerCase() === ADMIN_USER.email.toLowerCase() ? 'admin' : 'unassigned',
+          role: 'unassigned',
+          avatar: meta.avatar_url || meta.picture || ADMIN_USER.avatar,
+          phone: '+34 600 000 000',
           provider,
-        },
-        silent
-      );
-      const pendingUser: User = {
-        id: session.user.id,
-        name: meta.full_name || meta.name || email,
-        email,
-        role: email.toLowerCase() === ADMIN_USER.email.toLowerCase() ? 'admin' : 'unassigned',
-        avatar: meta.avatar_url || meta.picture || ADMIN_USER.avatar,
-        phone: '+34 600 000 000',
-        provider,
-        status: 'active',
-      };
-      void upsertProfile(pendingUser, session.user.id).then(async () => {
+          status: 'active',
+        };
+        await upsertProfile(pendingUser, session.user.id);
         const remote = await fetchProfiles();
         if (!remote.length) return;
         setUsers((prev) => {
           const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
           localStorage.setItem('gest_v2_users', JSON.stringify(merged));
+          const self = merged.find((u) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
+          if (self) {
+            setCurrentUser(self);
+            localStorage.setItem('gest_v2_current_user', JSON.stringify(self));
+          }
           return merged;
         });
-      });
+      })();
     };
 
     const {
@@ -976,7 +995,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const synced = {
         ...prev,
         ...next,
-        id: isPrimaryAdmin(prev) ? ADMIN_USER.id : next.id,
       };
       localStorage.setItem('gest_v2_current_user', JSON.stringify(synced));
       return synced;

@@ -26,6 +26,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { isLastActiveAdmin } from '../data/users';
 import { Role, User } from '../types';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
 import { formatCurrency } from '../utils/exportUtils';
@@ -619,7 +620,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
               {/* Users List */}
               <div className="space-y-2.5">
                 {filteredUsers.map((user) => {
-                  const isFirstAdmin = user.id === 'usr-adm-99' || user.id === 'user-admin-1';
+                  const isLastAdmin = isLastActiveAdmin(user, allUsers);
                   const isCurrentUser = currentUser.id === user.id;
                   const isEditingThisUser = editingUserId === user.id;
                   const isSuspended = user.status === 'suspended';
@@ -629,7 +630,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     <div
                       key={user.id}
                       className={`p-4 bg-[#FFFFFF] rounded-2xl border transition-all ${
-                        isFirstAdmin
+                        isLastAdmin
                           ? 'border-[#0A2E6D]/40 bg-gradient-to-r from-[#141414] to-[#1A1812]'
                           : isUnassigned
                           ? 'border-yellow-700/50 bg-yellow-950/15'
@@ -648,7 +649,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                               className={`w-11 h-11 rounded-full object-cover bg-[#F4F6FA] border ${
                                 isSuspended
                                   ? 'border-red-700/50 grayscale'
-                                  : isFirstAdmin
+                                  : isLastAdmin
                                   ? 'border-[#0A2E6D]'
                                   : isUnassigned
                                   ? 'border-yellow-400'
@@ -678,10 +679,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                   Tú
                                 </span>
                               )}
-                              {isFirstAdmin && (
+                              {isLastAdmin && (
                                 <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-[#0A2E6D] bg-[#0A2E6D]/15 px-2 py-0.5 rounded border border-[#0A2E6D]/40">
                                   <ShieldCheck className="w-3 h-3 text-[#0A2E6D]" />
-                                  Admin Matriz Protegido
+                                  Único administrador
                                 </span>
                               )}
                               <span
@@ -788,7 +789,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           )}
 
                           {/* Revoke building assignment quick button for president */}
-                          {!isEditingThisUser && user.role === 'president' && user.buildingId && !isFirstAdmin && (
+                          {!isEditingThisUser && user.role === 'president' && user.buildingId && !isLastAdmin && (
                             <button
                               onClick={() => setUserToRevoke(user)}
                               className="px-2.5 py-1.5 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-xl text-xs text-yellow-800 flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -824,7 +825,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           )}
 
                           {/* Toggle active / suspended status */}
-                          {!isFirstAdmin && (
+                          {!isLastAdmin && (
                             <button
                               onClick={() => toggleUserStatus(user.id)}
                               className={`p-2 rounded-xl border transition-colors cursor-pointer ${
@@ -843,7 +844,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           )}
 
                           {/* Delete / Remove user & role completely */}
-                          {!isFirstAdmin && (
+                          {!isLastAdmin && (
                             <button
                               onClick={() => setUserToDelete(user)}
                               className="px-2.5 py-1.5 bg-red-950/30 hover:bg-red-900/40 border border-red-800/40 hover:border-red-600/60 rounded-xl text-xs text-red-600 flex items-center gap-1.5 transition-colors cursor-pointer"
