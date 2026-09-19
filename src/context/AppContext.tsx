@@ -12,6 +12,7 @@ import {
 } from '../data/initialData';
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isPrimaryAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
+import { fetchInbox, insertInbox, markInboxRead, remoteToNotification } from '../lib/inbox';
 import { fetchProfiles, mergeUsersByEmail, persistProfile, upsertProfile } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -733,7 +734,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [notifications, setNotifications] = useState<PushNotification[]>(() => {
     const saved = localStorage.getItem('gest_v2_notifications');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+    const parsed: PushNotification[] = saved ? JSON.parse(saved) : [];
+    if (isSupabaseConfigured) {
+      return parsed.filter((n) => !/^notif-\d$/.test(n.id) && !n.message?.includes('Isabel Ferrer'));
+    }
+    return parsed.length ? parsed : INITIAL_NOTIFICATIONS;
   });
 
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
@@ -823,6 +828,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 6000);
   };
 
+  const publishNotification = (notif: PushNotification) => {
+    setNotifications((prev) => {
+      if (prev.some((n) => n.id === notif.id)) return prev;
+      return [notif, ...prev];
+    });
+    void insertInbox(notif);
+  };
+
   useEffect(() => {
     if (!supabase) {
       setAuthReady(true);
@@ -860,20 +873,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const remote = await fetchProfiles();
         if (!remote.length) return;
         setUsers((prev) => {
-          const newcomers = remote.filter(
-            (r) =>
-              r.role === 'unassigned' &&
-              !prev.some((p) => p.email.trim().toLowerCase() === r.email.trim().toLowerCase())
-          );
           const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
           localStorage.setItem('gest_v2_users', JSON.stringify(merged));
-          if (newcomers.length && email.toLowerCase() === ADMIN_USER.email.toLowerCase()) {
-            showToast(
-              'Nuevo registro',
-              newcomers.map((n) => n.email).join(', ') + ' esperan asignación de rol.',
-              'info'
-            );
-          }
           return merged;
         });
       });
@@ -926,6 +927,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+  useEffect(() => {
+    if (!supabase) return;
+    void fetchInbox().then((items) => {
+      if (!items.length) return;
+      setNotifications((prev) => {
+        const known = new Set(prev.map((n) => n.id));
+        const extra = items.filter((n) => !known.has(n.id));
+        return extra.length ? [...extra, ...prev] : prev;
+      });
+    });
+    const inboxChannel = supabase
+      .channel('inbox-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'app_notifications' }, (payload) => {
+        const row = payload.new as {
+          id: string;
+          title: string;
+          message: string;
+          type: PushNotification['type'];
+          building_id: string | null;
+          building_name: string | null;
+          ticket_id: string | null;
+          created_at: string;
+          is_read: boolean | null;
+          target_roles: string[] | null;
+        };
+        const notif = remoteToNotification(row);
+        setNotifications((prev) => (prev.some((n) => n.id === notif.id) ? prev : [notif, ...prev]));
+        showToast(notif.title, notif.message, 'info');
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(inboxChannel);
+    };
+  }, []);
+
   const refreshDirectory = async () => {
     const remote = await fetchProfiles();
     if (!remote.length) return;
@@ -933,6 +969,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
       localStorage.setItem('gest_v2_users', JSON.stringify(merged));
       return merged;
+    });
+    setCurrentUser((prev) => {
+      const next = remote.find((u) => u.email.trim().toLowerCase() === prev.email.trim().toLowerCase());
+      if (!next) return prev;
+      if (next.role === prev.role && next.buildingId === prev.buildingId && next.name === prev.name) return prev;
+      const synced = {
+        ...prev,
+        ...next,
+        id: isPrimaryAdmin(prev) ? ADMIN_USER.id : next.id,
+      };
+      localStorage.setItem('gest_v2_current_user', JSON.stringify(synced));
+      return synced;
     });
   };
 
@@ -981,7 +1029,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Push notification for Admin
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: '🏢 Nuevo Edificio Añadido',
       message: `Se ha dado de alta el edificio "${newBuilding.name}" con ${newBuilding.totalUnits} viviendas.`,
       type: 'system',
@@ -991,7 +1039,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       read: false,
       targetRoles: ['admin'],
     };
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
     showToast('Edificio Registrado', `Se agregó exitosamente "${newBuilding.name}" al catálogo.`, 'success');
 
     return newBuilding;
@@ -1123,7 +1171,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const bldg = buildings.find((b) => b.id === buildingId);
     // Push notification
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: `⚡ Factura de Suministro: ${newBill.serviceType.toUpperCase()} (${newBill.floor})`,
       message: `Contrato ${newBill.contractNumber} con ${newBill.companyName} por €${newBill.monthlyAmount}/mes en ${bldg?.name || 'el edificio'}.`,
       type: 'system',
@@ -1133,7 +1181,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       read: false,
       targetRoles: ['admin', 'president'],
     };
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
 
     showToast(
       'Factura de Suministro Registrada',
@@ -1227,7 +1275,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Push notification
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: `💳 Pago de Suministro Asentado: €${bill.monthlyAmount}`,
       message: `Se registró el pago de ${bill.serviceType.toUpperCase()} (${bill.floor}) en ${bldg.name}.`,
       type: 'accounting_expense',
@@ -1237,7 +1285,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       read: false,
       targetRoles: ['admin', 'president'],
     };
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
 
     showToast(
       'Pago Asentado en Contabilidad',
@@ -1390,7 +1438,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const notifMsg = `En ${newTicket.buildingName} (Piso ${newTicket.floor}, ${newTicket.unitOrArea}): "${newTicket.title}"`;
 
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: notifTitle,
       message: notifMsg,
       type: 'ticket_created',
@@ -1402,7 +1450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetRoles: ['admin', 'worker'],
     };
 
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
     showToast(notifTitle, notifMsg, data.priority === 'urgente' ? 'alert' : 'info');
 
     return newTicket;
@@ -1467,7 +1515,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const notifMsg = `${currentUser.name} (${currentUser.role}) actualizó ${targetTicket.ticketNumber} a "${newStatus.toUpperCase()}" en ${targetTicket.buildingName}.`;
 
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: notifTitle,
       message: notifMsg,
       type: 'ticket_status',
@@ -1479,7 +1527,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetRoles: ['admin', 'president'],
     };
 
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
     showToast(notifTitle, notifMsg, newStatus === 'resuelta' ? 'success' : 'info');
   };
 
@@ -1514,7 +1562,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: '🛠️ Ticket Asignado a Trabajador',
       message: `Se asignó el ticket ${targetTicket.ticketNumber} a ${worker.name}.`,
       type: 'ticket_status',
@@ -1525,7 +1573,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       read: false,
       targetRoles: ['admin', 'worker', 'president'],
     };
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
     showToast('Trabajador Asignado', `${worker.name} ha sido asignado a la incidencia ${targetTicket.ticketNumber}.`, 'success');
   };
 
@@ -1603,7 +1651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 3. Real-time Notification for Admin & President
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: '💵 Gasto de Mantenimiento Registrado',
       message: `${currentUser.name} asentó €${totalCharged} por reparación del ticket ${targetTicket.ticketNumber} en ${targetTicket.buildingName}.`,
       type: 'accounting_expense',
@@ -1615,7 +1663,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetRoles: ['admin', 'president'],
     };
 
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
     showToast(
       'Contabilidad Actualizada',
       `Se registraron €${totalCharged} correspondientes al ticket ${targetTicket.ticketNumber} en ${targetTicket.buildingName}.`,
@@ -1748,7 +1796,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const notifMsg = `${currentUser.name} añadió €${data.amount} (${data.concept}) a la fondo de incidencias de ${targetTicket.buildingName} para el ticket ${targetTicket.ticketNumber}.`;
 
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: notifTitle,
       message: notifMsg,
       type: isResolving ? 'ticket_status' : 'accounting_expense',
@@ -1759,7 +1807,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       read: false,
       targetRoles: ['admin', 'president'],
     };
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
 
     showToast(
       isResolving ? 'Incidencia Resuelto con Éxito' : 'Gasto Registrado en Caja',
@@ -1803,7 +1851,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Push notification
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: '💵 Pago de Honorarios a Operario',
       message: `Admin ${currentUser.name} registró pago de €${(Number(data.amount) || 0).toLocaleString()} a ${data.workerName} (${data.period}).`,
       type: 'system',
@@ -1811,7 +1859,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       read: false,
       targetRoles: ['admin', 'worker'],
     };
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
 
     showToast(
       'Pago Registrado',
@@ -1863,7 +1911,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     // Notify admin & president
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: '🔔 Nueva Solicitud de Servicio',
       message: `El vecino ${data.neighborName} ha solicitado el servicio "${data.serviceName}".`,
       type: 'system',
@@ -1872,7 +1920,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       buildingId: data.buildingId,
       targetRoles: ['admin', 'president']
     };
-    setNotifications(prev => [notif, ...prev]);
+    publishNotification(notif);
   };
 
   const updateNeighborRequest = (id: string, status: NeighborServiceRequest['status'], scheduledDate?: string) => {
@@ -1884,7 +1932,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           
           if (status === 'completado') {
             const notif: PushNotification = {
-              id: `notif-${Date.now()}`,
+              id: crypto.randomUUID(),
               title: '✅ Servicio Completado',
               message: `El servicio "${r.serviceName}" para ${r.neighborName} ha sido marcado como completado.`,
               type: 'system',
@@ -1893,7 +1941,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               buildingId: r.buildingId,
               targetRoles: ['neighbor']
             };
-            setNotifications(p => [notif, ...p]);
+            publishNotification(notif);
           }
           return updated;
         }
@@ -1916,7 +1964,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Notification
     const notif: PushNotification = {
-      id: `notif-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: data.type === 'ingreso' ? '💰 Nuevo Ingreso Asentado' : '💳 Nuevo Gasto Registrado',
       message: `${data.description} por €${(Number(data.amount) || 0).toLocaleString()} en ${data.buildingName}.`,
       type: data.type === 'ingreso' ? 'accounting_income' : 'accounting_expense',
@@ -1926,7 +1974,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       read: false,
       targetRoles: ['admin', 'president'],
     };
-    setNotifications((prev) => [notif, ...prev]);
+    publishNotification(notif);
     showToast('Movimiento Guardado', `Se registró ${data.type.toUpperCase()}: €${(Number(data.amount) || 0).toLocaleString()} en ${data.buildingName}`, 'success');
 
     return newTx;
@@ -1940,6 +1988,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Notifications
   const markNotificationAsRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, ...{ read: true } } : n)));
+    void markInboxRead(id, true);
   };
 
   const markAllNotificationsAsRead = () => {

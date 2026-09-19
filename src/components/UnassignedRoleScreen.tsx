@@ -15,14 +15,17 @@ import {
 import { useApp } from '../context/AppContext';
 
 export const UnassignedRoleScreen: React.FC = () => {
-  const { currentUser, logout, showToast } = useApp();
+  const { currentUser, logout, showToast, refreshDirectory } = useApp();
 
-  const handleRefresh = () => {
-    // Read from localStorage to check if admin assigned a role
+  const handleRefresh = async () => {
+    await refreshDirectory();
     const savedUsers = localStorage.getItem('gest_v2_users');
     if (savedUsers) {
       const parsed = JSON.parse(savedUsers);
-      const updated = parsed.find((u: any) => u.id === currentUser.id);
+      const updated = parsed.find(
+        (u: { email?: string; role?: string }) =>
+          (u.email || '').toLowerCase() === currentUser.email.toLowerCase()
+      );
       if (updated && updated.role !== 'unassigned') {
         window.location.reload();
         return;

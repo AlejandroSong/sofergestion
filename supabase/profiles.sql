@@ -73,3 +73,70 @@ begin
     null;
   end;
 end $$;
+
+create table if not exists public.app_notifications (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  message text not null,
+  type text not null default 'system',
+  building_id text,
+  building_name text,
+  ticket_id text,
+  created_at timestamptz default now(),
+  is_read boolean default false,
+  target_roles text[] not null default array['admin']::text[]
+);
+
+alter table public.app_notifications enable row level security;
+
+drop policy if exists "app_notifications_select" on public.app_notifications;
+create policy "app_notifications_select"
+  on public.app_notifications for select to authenticated
+  using (true);
+
+drop policy if exists "app_notifications_insert" on public.app_notifications;
+create policy "app_notifications_insert"
+  on public.app_notifications for insert to authenticated
+  with check (true);
+
+drop policy if exists "app_notifications_update" on public.app_notifications;
+create policy "app_notifications_update"
+  on public.app_notifications for update to authenticated
+  using (true)
+  with check (true);
+
+alter table public.app_notifications replica identity full;
+
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.app_notifications;
+  exception when duplicate_object then
+    null;
+  end;
+end $$;
+
+create or replace function public.on_profile_access_request()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.role = 'unassigned' then
+    insert into public.app_notifications (title, message, type, target_roles)
+    values (
+      'Nueva solicitud de acceso',
+      coalesce(new.name, new.email) || ' (' || new.email || ') espera que le asignes un rol.',
+      'system',
+      array['admin']::text[]
+    );
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_profile_access_request on public.profiles;
+create trigger on_profile_access_request
+  after insert on public.profiles
+  for each row execute function public.on_profile_access_request();

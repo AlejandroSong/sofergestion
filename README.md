@@ -23,4 +23,4 @@ Origen de JavaScript: la URL de Production y `http://localhost:3000`.
 
 ## Supabase
 
-En SQL Editor ejecuta `supabase/profiles.sql` para que el admin vea las altas de Google de otros dispositivos.
+En SQL Editor ejecuta `supabase/profiles.sql` (perfiles, solicitudes de acceso y notificaciones).
