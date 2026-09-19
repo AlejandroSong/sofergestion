@@ -74,7 +74,7 @@ export async function initGoogleButton(
     },
     auto_select: false,
     cancel_on_tap_outside: true,
-    ux_mode: 'popup',
+    use_fedcm_for_prompt: false,
     context: 'signin',
   });
   parent.innerHTML = '';

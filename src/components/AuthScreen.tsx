@@ -3,7 +3,7 @@ import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { useApp } from '../context/AppContext';
 import { initGoogleButton } from '../lib/googleGis';
-import { consumeGoogleRedirectResult, googleClientId, isNativeShell, requestGoogleIdToken } from '../lib/googleAuth';
+import { consumeGoogleRedirectResult, googleClientId } from '../lib/googleAuth';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthScreen: React.FC = () => {
@@ -29,7 +29,7 @@ export const AuthScreen: React.FC = () => {
 
   useEffect(() => {
     const host = buttonHostRef.current;
-    if (!host || !isSupabaseConfigured || !googleClientId || isNativeShell()) return;
+    if (!host || !isSupabaseConfigured || !googleClientId) return;
 
     void initGoogleButton(
       host,
@@ -90,26 +90,7 @@ export const AuthScreen: React.FC = () => {
 
           <div className="flex flex-col items-center gap-3">
             {isBusy && <p className="text-xs text-[#3D6FA8] font-medium">Entrando…</p>}
-            {!isNativeShell() && <div ref={buttonHostRef} className="min-h-[44px] flex justify-center" />}
-            <button
-              type="button"
-              disabled={isBusy || !isSupabaseConfigured || !googleClientId}
-              onClick={() => {
-                setErrorMessage(null);
-                setIsBusy(true);
-                void requestGoogleIdToken(googleClientId).then(async (token) => {
-                  const res = await signInWithGoogleCredential(token);
-                  setIsBusy(false);
-                  if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
-                }).catch((err) => {
-                  setIsBusy(false);
-                  setErrorMessage(err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google');
-                });
-              }}
-              className="w-full max-w-[336px] py-2.5 px-4 rounded-full border border-[#D5E4F5] bg-white text-sm font-semibold text-[#1E3A5F] cursor-pointer disabled:opacity-50"
-            >
-              Continuar con Google
-            </button>
+            <div ref={buttonHostRef} className="min-h-[44px] flex justify-center" />
           </div>
         </div>
 
