@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Building2,
   MapPin,
@@ -44,7 +44,7 @@ import { InsuranceManager } from './InsuranceManager';
 import { ExceptionalExpensesManager } from './ExceptionalExpensesManager';
 import { AddBuildingModal } from './AddBuildingModal';
 import { AssignPresidentModal } from './AssignPresidentModal';
-import { canViewBuildingAccounting } from '../utils/permissions';
+import { canViewBuildingAccounting, canDeleteFinishedTicket } from '../utils/permissions';
 
 interface BuildingDetailViewProps {
   buildingId: string;
@@ -78,9 +78,29 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
   const [isAssignOpen, setIsAssignOpen] = useState(false);
 
   const building = getBuildingById(buildingId);
-  if (!building) return null;
-  const showAccounting = canViewBuildingAccounting(currentUser, building.id);
+  const showAccounting = building ? canViewBuildingAccounting(currentUser, building.id) : false;
 
+  useEffect(() => {
+    if (!showAccounting && activeTab === 'accounting') {
+      setActiveTab('tickets');
+    }
+  }, [showAccounting, activeTab]);
+
+  if (!building) {
+    return (
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 text-center space-y-3">
+        <p className="text-sm font-bold text-[#16202E]">Este edificio no está disponible</p>
+        <p className="text-xs text-[#5A6B82]">Puede haberse eliminado o no pertenecer a tu cuenta.</p>
+        <button
+          type="button"
+          onClick={onBack}
+          className="px-4 py-2 bg-[#0A2E6D] text-white text-xs font-bold rounded-xl cursor-pointer"
+        >
+          Volver al panel
+        </button>
+      </div>
+    );
+  }
   const buildingTickets = tickets.filter((t) => t.buildingId === buildingId);
   const buildingTransactions = transactions.filter((t) => t.buildingId === buildingId);
 
@@ -211,13 +231,13 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
               </button>
               <button
                 onClick={() => {
-                  if (confirm('Esto pondrá a cero balances, cuotas de vecinos e incidencias de este edificio. ¿Continuar?')) {
+                  if (confirm('¿Eliminar los balances de este edificio y empezar de 0? Las incidencias no se borran.')) {
                     resetBuildingOperations(building.id);
                   }
                 }}
                 className="px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold cursor-pointer"
               >
-                Empezar de 0
+                Balances a 0
               </button>
             </>
           )}
@@ -707,16 +727,16 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
                         <span className="font-semibold text-[#D1D5DB]">
                           {tkt.assignedWorkerName || 'Sin asignar'}
                         </span>
-                        {currentUser.role === 'admin' && (
+                        {canDeleteFinishedTicket(currentUser, tkt) && (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm(`¿Eliminar la incidencia ${tkt.ticketNumber}?`)) deleteTicket(tkt.id);
+                              if (confirm(`¿Eliminar el reporte ${tkt.ticketNumber}?`)) deleteTicket(tkt.id);
                             }}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded cursor-pointer"
+                            className="px-2 py-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 rounded cursor-pointer"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            Eliminar
                           </button>
                         )}
                       </div>

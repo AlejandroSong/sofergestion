@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -20,11 +20,11 @@ import {
   ShieldCheck,
   Wrench,
   Receipt,
-  Coins,
+  Calendar,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { canUpdateTicketStatus, canChargeRepairFund, canDeleteTickets, canAssignWorkers } from '../utils/permissions';
-import { TicketStatus } from '../types';
+import { canUpdateTicketStatus, canChargeRepairFund, canDeleteFinishedTicket, canAssignWorkers, canSetTicketPriority, canScheduleTicketVisit } from '../utils/permissions';
+import { TicketPriority, TicketStatus } from '../types';
 import { exportTicketDetailPDF, formatCurrency } from '../utils/exportUtils';
 import { WorkerServiceModal } from './WorkerServiceModal';
 import { WorkerRepairFundModal } from './WorkerRepairFundModal';
@@ -36,7 +36,7 @@ interface TicketDetailModalProps {
   isOpen?: boolean;
 }
 
-export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, onClose }) => {
+export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, onClose, isOpen = true }) => {
   const {
     tickets,
     buildings,
@@ -45,7 +45,9 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
     workerPayouts,
     updateTicketStatus,
     assignWorkerToTicket,
+    scheduleTicketVisit,
     deleteTicket,
+    setTicketPriority,
   } = useApp();
 
   const [commentText, setCommentText] = useState('');
@@ -53,7 +55,14 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
   const [isRepairFundModalOpen, setIsRepairFundModalOpen] = useState(false);
 
   const ticket = tickets.find((t) => t.id === ticketId);
-  if (!ticket) return null;
+
+  useEffect(() => {
+    if (isOpen && ticketId && !ticket) {
+      onClose();
+    }
+  }, [isOpen, ticketId, ticket, onClose]);
+
+  if (!isOpen || !ticket) return null;
 
   const building = buildings.find((b) => b.id === ticket.buildingId);
   const workers = collectWorkerRoster(allUsers, workerPayouts, tickets);
@@ -152,6 +161,18 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
                   >
                     {ticket.priority}
                   </span>
+                  {canSetTicketPriority(currentUser, ticket) && ticket.status !== 'resuelta' && (
+                    <select
+                      value={ticket.priority}
+                      onChange={(e) => setTicketPriority(ticket.id, e.target.value as TicketPriority)}
+                      className="text-[11px] font-bold border border-[#E2E8F0] rounded-lg px-2 py-1 bg-white text-[#16202E] cursor-pointer"
+                    >
+                      <option value="urgente">Urgente</option>
+                      <option value="alta">Alta</option>
+                      <option value="media">Media</option>
+                      <option value="baja">Baja</option>
+                    </select>
+                  )}
                   {building && (
                     <span className="font-mono text-xs font-semibold text-green-600 bg-green-950/30 px-2 py-0.5 rounded border border-green-200">
                       Caja Edificio: {formatCurrency(building.repairFund || 0)}
@@ -164,11 +185,11 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                {canDeleteTickets(currentUser) && (
+                {canDeleteFinishedTicket(currentUser, ticket) && (
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm(`¿Eliminar la incidencia ${ticket.ticketNumber}? Esta acción no se puede deshacer.`)) {
+                      if (confirm(`¿Eliminar el reporte resuelto ${ticket.ticketNumber}? Esta acción no se puede deshacer.`)) {
                         deleteTicket(ticket.id);
                         onClose();
                       }
@@ -177,7 +198,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
                     title="Eliminar incidencia"
                   >
                     <Trash2 className="w-4 h-4" />
-                    <span className="hidden sm:inline">Eliminar</span>
+                    <span className="hidden sm:inline">Eliminar reporte</span>
                   </button>
                 )}
                 <button
@@ -282,6 +303,26 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
                   )}
                 </div>
 
+                {canScheduleTicketVisit(currentUser, ticket) && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <Calendar className="w-4 h-4 text-[#0A2E6D]" />
+                    <label className="font-semibold text-[#16202E]">
+                      Día de visita
+                      <input
+                        type="date"
+                        value={ticket.scheduledVisitDate || ''}
+                        onChange={(e) => scheduleTicketVisit(ticket.id, e.target.value)}
+                        className="ml-2 px-2 py-1.5 border border-[#E2E8F0] rounded-lg bg-[#F4F6FA]"
+                      />
+                    </label>
+                    {ticket.scheduledVisitDate && (
+                      <span className="text-[#5A6B82]">
+                        Ir a {ticket.buildingName} a hacer: {ticket.title}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Worker / Admin State Transitions Controls & Modifying Money Box */}
                 {canUpdateTicketStatus(currentUser, ticket) && (
                   <div className="pt-2 border-t border-[#E2E8F0] flex flex-wrap items-center justify-between gap-2">
@@ -378,13 +419,13 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-[#16202E] uppercase tracking-wider flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-[#5A6B82]" />
-                    Historial Completo de Seguimiento ({ticket.timeline.length} Registros)
+                    Historial Completo de Seguimiento ({(ticket.timeline || []).length} Registros)
                   </h4>
                   <span className="text-[11px] text-[#5A6B82]">Trazabilidad auditada</span>
                 </div>
 
                 <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#E8EFF9]">
-                  {ticket.timeline.map((evt, idx) => (
+                  {(ticket.timeline || []).map((evt, idx) => (
                     <div key={evt.id || idx} className="relative group">
                       {/* Timeline marker */}
                       <div className="absolute -left-6 top-1 w-4 h-4 rounded-full bg-[#F4F6FA] border-2 border-[#0A2E6D] flex items-center justify-center">

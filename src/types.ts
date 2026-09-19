@@ -24,6 +24,7 @@ export interface User {
   buildingName?: string;
   specialty?: string; // For workers
   unitOrArea?: string; // For neighbors (vivienda)
+  floor?: string; // Piso de la vivienda
   taxReturnsRemaining?: number; // For neighbors
   provider?: 'email' | 'google';
   password?: string;
@@ -183,6 +184,7 @@ export interface Ticket {
   resolvedAt?: string;
   resolutionNotes?: string;
   repairExpenses?: TicketRepairExpense[];
+  scheduledVisitDate?: string; // YYYY-MM-DD: día en que el operario debe ir al edificio
 }
 
 export interface WorkerPayout {
@@ -266,7 +268,15 @@ export interface PushNotification {
   buildingId?: string;
   buildingName?: string;
   ticketId?: string;
+  requestId?: string;
+  userId?: string;
   timestamp: string;
   read: boolean;
   targetRoles: Role[];
 }
+
+export type AdminInboxTarget = {
+  type: 'users' | 'sofer';
+  userId?: string;
+  requestId?: string;
+} | null;

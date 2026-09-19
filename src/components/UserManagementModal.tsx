@@ -32,6 +32,7 @@ import { Role, User } from '../types';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
 import { fetchRevokedEmails } from '../lib/profiles';
 import { formatCurrency } from '../utils/exportUtils';
+import { composeHousing, parseHousing } from '../utils/housing';
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -50,6 +51,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     buildings,
     refreshDirectory,
     restoreAccess,
+    adminInboxTarget,
+    setAdminInboxTarget,
   } = useApp();
 
   const [isAdding, setIsAdding] = useState(false);
@@ -80,6 +83,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const [editSpecialty, setEditSpecialty] = useState<string>('');
   const [editCustomSpecialty, setEditCustomSpecialty] = useState<string>('');
   const [editUnitOrArea, setEditUnitOrArea] = useState<string>('');
+  const [editFloor, setEditFloor] = useState('');
+  const [editDoor, setEditDoor] = useState('');
   const [editMonthlyFee, setEditMonthlyFee] = useState<number>(85);
   const [selectedNeighborForAccountEdit, setSelectedNeighborForAccountEdit] = useState<User | null>(null);
   const [revokedEmails, setRevokedEmails] = useState<string[]>([]);
@@ -161,9 +166,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
   const startEditing = (user: User) => {
     setEditingUserId(user.id);
-    const initialRole = user.role === 'unassigned' ? 'worker' : user.role;
+    const initialRole = user.role === 'unassigned' ? 'neighbor' : user.role;
     setEditRole(initialRole);
     setEditBuildingId(user.buildingId || buildings[0]?.id || '');
+    const housing = parseHousing(user.unitOrArea, user.floor);
+    setEditFloor(housing.floor);
+    setEditDoor(housing.door);
     setEditUnitOrArea(user.unitOrArea || '');
     setEditMonthlyFee(user.monthlyFee || 85);
 
@@ -183,6 +191,19 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
       setEditCustomSpecialty('');
     }
   };
+
+  useEffect(() => {
+    if (!isOpen || !adminInboxTarget?.userId) return;
+    const target = allUsers.find(
+      (u) =>
+        u.id === adminInboxTarget.userId ||
+        u.email.trim().toLowerCase() === adminInboxTarget.userId?.trim().toLowerCase()
+    );
+    if (!target) return;
+    setFilterRole(target.role === 'unassigned' ? 'unassigned' : 'all');
+    setSearchQuery(target.email);
+    startEditing(target);
+  }, [isOpen, adminInboxTarget, allUsers]);
 
   const saveEditing = (userId: string) => {
     let assignedBuildingName = undefined;
@@ -205,11 +226,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
       buildingName: assignedBuildingName,
       specialty: finalSpecialty,
       unitOrArea:
-        editRole === 'neighbor'
-          ? editUnitOrArea.trim() || 'Vivienda Principal'
-          : editRole === 'president'
-          ? editUnitOrArea.trim() || undefined
+        editRole === 'neighbor' || editRole === 'president'
+          ? composeHousing(editFloor, editDoor) || editUnitOrArea.trim() || undefined
           : undefined,
+      floor: editRole === 'neighbor' || editRole === 'president' ? editFloor.trim() || undefined : undefined,
       monthlyFee: editRole === 'neighbor' ? editMonthlyFee : undefined,
     });
 
@@ -975,6 +995,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                   onChange={(e) => setEditBuildingId(e.target.value)}
                                   className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
                                 >
+                                  <option value="">Selecciona edificio…</option>
                                   {buildings.map((b) => (
                                     <option key={b.id} value={b.id}>
                                       {b.name} ({b.address})
@@ -983,12 +1004,22 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-[11px] font-semibold text-blue-700 mb-1">Piso y número de su vivienda</label>
+                                <label className="block text-[11px] font-semibold text-blue-700 mb-1">Piso</label>
                                 <input
                                   type="text"
-                                  value={editUnitOrArea}
-                                  onChange={(e) => setEditUnitOrArea(e.target.value)}
-                                  placeholder="Ej. Piso 4 Nº B"
+                                  value={editFloor}
+                                  onChange={(e) => setEditFloor(e.target.value)}
+                                  placeholder="Ej. 4"
+                                  className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-blue-700 mb-1">Número de vivienda</label>
+                                <input
+                                  type="text"
+                                  value={editDoor}
+                                  onChange={(e) => setEditDoor(e.target.value)}
+                                  placeholder="Ej. B / 2A"
                                   className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
                                 />
                               </div>
@@ -1007,6 +1038,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                     onChange={(e) => setEditBuildingId(e.target.value)}
                                     className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
                                   >
+                                    <option value="">Selecciona edificio…</option>
                                     {buildings.map((b) => (
                                       <option key={b.id} value={b.id}>
                                         {b.name}
@@ -1015,14 +1047,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                   </select>
                                 </div>
                                 <div>
+                                  <label className="block text-[11px] font-semibold text-[#128480] mb-1">Piso</label>
+                                  <input
+                                    type="text"
+                                    value={editFloor}
+                                    onChange={(e) => setEditFloor(e.target.value)}
+                                    placeholder="Ej. 3"
+                                    className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
+                                  />
+                                </div>
+                                <div>
                                   <label className="block text-[11px] font-semibold text-[#128480] mb-1">
-                                    Vivienda / Puerta
+                                    Número de vivienda
                                   </label>
                                   <input
                                     type="text"
-                                    value={editUnitOrArea}
-                                    onChange={(e) => setEditUnitOrArea(e.target.value)}
-                                    placeholder="Ej. Planta 3ª Puerta B"
+                                    value={editDoor}
+                                    onChange={(e) => setEditDoor(e.target.value)}
+                                    placeholder="Ej. 2A"
                                     className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
                                   />
                                 </div>

@@ -4,7 +4,6 @@ import {
   ShieldAlert,
   Clock,
   LogOut,
-  Building2,
   Mail,
   User,
   Phone,
@@ -13,6 +12,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { HousingPanel } from './HousingPanel';
+import { BrandLogo } from './BrandLogo';
 
 export const UnassignedRoleScreen: React.FC = () => {
   const { currentUser, logout, showToast, refreshDirectory } = useApp();
@@ -34,12 +35,7 @@ export const UnassignedRoleScreen: React.FC = () => {
       >
         {/* Brand Header */}
         <div className="text-center space-y-1.5">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#F4F6FA] border border-[#E2E8F0] text-[#0A2E6D] shadow-xl mb-1">
-            <Building2 className="w-8 h-8 text-[#0A2E6D]" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#16202E] flex items-center justify-center gap-2">
-            SOFER <span className="text-[#0A2E6D]">Gestión</span>
-          </h1>
+          <BrandLogo variant="hero" />
           <p className="text-xs text-[#5A6B82]">
             Sistema Centralizado de Edificios & Mantenimiento
           </p>
@@ -110,11 +106,14 @@ export const UnassignedRoleScreen: React.FC = () => {
               Por normativa de seguridad y control financiero de los inmuebles, los usuarios no pueden asignarse roles ni cambiarse entre sí. El <strong className="text-[#16202E]">Administrador de fincas</strong> configurará si actúas como:
             </p>
             <ul className="space-y-1 pl-4 list-disc text-[11px] text-[#5A6B82]">
+              <li><strong className="text-[#0A2E6D]">Vecino / Residente:</strong> Cuotas, incidencias y servicios de tu vivienda.</li>
               <li><strong className="text-blue-600">Presidente de la comunidad:</strong> Administrando una finca específica y sus incidencias.</li>
               <li><strong className="text-green-600">Trabajador / Operario:</strong> Asignado a tu especialidad de mantenimiento y reparaciones.</li>
               <li><strong className="text-[#0A2E6D]">Administrador de fincas:</strong> Con control total contable y multiedificio.</li>
             </ul>
           </div>
+
+          <HousingPanel title="¿En qué vivienda estás? (opcional)" />
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3">

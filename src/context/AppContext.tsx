@@ -12,15 +12,18 @@ import {
 } from '../data/initialData';
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isLastActiveAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
-import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
+import { fetchInbox, insertInbox, insertInboxMany, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
+import { buildIncidentWave } from '../utils/incidentSimulation';
 import { clearRevocation, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, upsertProfile } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
+import { parseHousing } from '../utils/housing';
 import {
   isNotificationForUser,
   loadReadNotificationIds,
   mergeNotificationLists,
   saveReadNotificationIds,
+  ticketNoticeAudience,
   withLocalReads,
 } from '../utils/notifications';
 import {
@@ -36,7 +39,11 @@ import {
   canRequestSoferService,
   canResetFinances,
   canDeleteTickets,
+  canSetTicketPriority,
+  isTicketFinished,
   canUpdateTicketStatus,
+  canScheduleTicketVisit,
+  canNotifyAdmin,
   ticketBuildingForUser,
 } from '../utils/permissions';
 import type { Session } from '@supabase/supabase-js';
@@ -56,6 +63,7 @@ import {
   WorkerPayout,
   NeighborService,
   NeighborServiceRequest,
+  AdminInboxTarget,
 } from '../types';
 import {
   playNotificationSound,
@@ -87,6 +95,7 @@ interface AppContextType {
       buildingName?: string;
       specialty?: string;
       unitOrArea?: string;
+      floor?: string;
       monthlyFee?: number;
       feeBalance?: number;
     }
@@ -148,10 +157,15 @@ interface AppContextType {
     ticketId: string,
     newStatus: TicketStatus,
     notes?: string,
-    photoUrl?: string
+    photoUrl?: string,
+    scheduledVisitDate?: string
   ) => void;
   assignWorkerToTicket: (ticketId: string, workerId: string) => void;
+  scheduleTicketVisit: (ticketId: string, date: string) => void;
+  notifyAdmin: (message: string) => void;
   updateTicketDetails: (ticketId: string, updates: Partial<Ticket>) => void;
+  setTicketPriority: (ticketId: string, priority: TicketPriority) => void;
+  setTicketsPriority: (ticketIds: string[], priority: TicketPriority) => void;
   deleteTicket: (ticketId: string) => void;
   registerServiceAccounting: (data: {
     ticketId: string;
@@ -195,6 +209,7 @@ interface AppContextType {
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   unreadCount: number;
+  simulateBuildingAlertWave: (count?: number) => void;
 
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
@@ -203,6 +218,7 @@ interface AppContextType {
   accessibleBuildings: Building[];
   accessibleTickets: Ticket[];
   accessibleTransactions: Transaction[];
+  communityDirectory: Array<{ id: string; name: string; address: string; city: string; floors: number }>;
 
   // Active navigation / drilldown state
   activeTab: string;
@@ -211,6 +227,9 @@ interface AppContextType {
   setSelectedBuildingId: (id: string | null) => void;
   selectedTicketId: string | null;
   setSelectedTicketId: (id: string | null) => void;
+  adminInboxTarget: AdminInboxTarget;
+  setAdminInboxTarget: (target: AdminInboxTarget) => void;
+  applyRequestHousingToUser: (requestId: string) => void;
 
   // In-app interactive Toast notifications
   toasts: ToastItem[];
@@ -294,11 +313,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deny('No puedes modificar la cuenta de otro usuario.');
         return;
       }
+      const canSetHousing =
+        currentUser.role === 'neighbor' ||
+        currentUser.role === 'president' ||
+        currentUser.role === 'unassigned';
+      const housing: Partial<User> = {};
+      if (canSetHousing) {
+        if (updates.buildingId) {
+          const community = buildings.find((b) => b.id === updates.buildingId);
+          if (!community) {
+            deny('Ese edificio no está registrado.');
+            return;
+          }
+          housing.buildingId = community.id;
+          housing.buildingName = community.name;
+        }
+        if (updates.floor !== undefined) housing.floor = updates.floor;
+        if (updates.unitOrArea !== undefined) housing.unitOrArea = updates.unitOrArea;
+      }
       updates = {
         phone: updates.phone,
         name: updates.name,
         avatar: updates.avatar,
+        ...housing,
       };
+      if (canSetHousing && (housing.buildingId || housing.unitOrArea)) {
+        publishNotification({
+          id: crypto.randomUUID(),
+          title: 'Vivienda indicada',
+          message: `${currentUser.name} pide ${housing.buildingName || currentUser.buildingName || 'comunidad'} · ${housing.unitOrArea || 'sin número'}. Confírmalo o corrígelo en Usuarios.`,
+          type: 'system',
+          timestamp: new Date().toISOString(),
+          read: false,
+          buildingId: housing.buildingId || currentUser.buildingId,
+          userId: currentUser.id,
+          targetRoles: ['admin'],
+        });
+      }
     }
 
     const newUsers = users.map((u) => (u.id === id || (target && u.email === target.email) ? { ...u, ...updates } : u));
@@ -320,6 +371,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       });
     }
+
+    const housingTouched =
+      updates.buildingId !== undefined || updates.unitOrArea !== undefined || updates.floor !== undefined;
+    if (
+      currentUser.role === 'admin' &&
+      persisted &&
+      persisted.id !== currentUser.id &&
+      (persisted.role === 'neighbor' || persisted.role === 'president') &&
+      housingTouched &&
+      (persisted.buildingId || persisted.unitOrArea)
+    ) {
+      publishNotification({
+        id: crypto.randomUUID(),
+        title: 'Tu vivienda está asignada',
+        message: `El administrador confirmó tu vivienda: ${persisted.buildingName || 'comunidad'} · ${persisted.unitOrArea || 'sin número'}. Ya aparece en Mi Vivienda.`,
+        type: 'system',
+        timestamp: new Date().toISOString(),
+        read: false,
+        buildingId: persisted.buildingId,
+        buildingName: persisted.buildingName,
+        userId: persisted.id,
+        targetRoles: [persisted.role],
+      });
+    }
   };
 
   const updateUserRole = (
@@ -330,6 +405,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       buildingName?: string;
       specialty?: string;
       unitOrArea?: string;
+      floor?: string;
       monthlyFee?: number;
       feeBalance?: number;
     }
@@ -360,6 +436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           buildingId: isBuildingRole ? (extra?.buildingId ?? u.buildingId) : undefined,
           buildingName: isBuildingRole ? (extra?.buildingName ?? u.buildingName) : undefined,
           unitOrArea: isBuildingRole ? (extra?.unitOrArea ?? u.unitOrArea) : undefined,
+          floor: isBuildingRole ? (extra?.floor ?? u.floor) : undefined,
           monthlyFee: isBuildingRole ? (extra?.monthlyFee ?? u.monthlyFee ?? (newRole === 'president' ? 95 : 85)) : undefined,
           feeBalance: isBuildingRole ? (extra?.feeBalance ?? u.feeBalance ?? 0) : undefined,
           feeFrequency: isBuildingRole ? (u.feeFrequency || 'mensual') : undefined,
@@ -427,6 +504,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return;
         }
         showToast('Rol Actualizado', `${persisted.name} ahora es ${persisted.role}.`, 'success');
+        if (persisted.role === 'neighbor' || persisted.role === 'president') {
+          publishNotification({
+            id: crypto.randomUUID(),
+            title: persisted.unitOrArea ? 'Rol y vivienda asignados' : 'Tu rol ha sido asignado',
+            message: persisted.unitOrArea
+              ? `Ya eres ${persisted.role === 'president' ? 'presidente' : 'vecino'} de ${persisted.buildingName || 'tu comunidad'} · ${persisted.unitOrArea}.`
+              : `El administrador te asignó el rol de ${persisted.role === 'president' ? 'presidente' : 'vecino'}. Completa tu vivienda en el panel.`,
+            type: 'system',
+            timestamp: new Date().toISOString(),
+            read: false,
+            buildingId: persisted.buildingId,
+            buildingName: persisted.buildingName,
+            userId: persisted.id,
+            targetRoles: [persisted.role],
+          });
+        }
+        if (persisted.role === 'worker') {
+          publishNotification({
+            id: crypto.randomUUID(),
+            title: 'Ya eres operario',
+            message: `El administrador te asignó como trabajador${persisted.specialty ? ` (${persisted.specialty})` : ''}. Te llegarán las visitas e incidencias.`,
+            type: 'system',
+            timestamp: new Date().toISOString(),
+            read: false,
+            userId: persisted.id,
+            targetRoles: ['worker'],
+          });
+        }
       });
       return;
     }
@@ -902,6 +1007,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [adminInboxTarget, setAdminInboxTarget] = useState<AdminInboxTarget>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const currentRoleRef = useRef(currentUser.role);
   currentRoleRef.current = currentUser.role;
@@ -981,7 +1087,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const showToast = (title: string, message: string, type: 'success' | 'alert' | 'info' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-    setToasts((prev) => [...prev, { id, title, message, type }]);
+    setToasts((prev) => [...prev, { id, title, message, type }].slice(-4));
 
     if (soundEnabled) {
       playNotificationSound(type);
@@ -1001,9 +1107,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const publishNotification = (notif: PushNotification) => {
     setNotifications((prev) => {
       if (prev.some((n) => n.id === notif.id)) return prev;
-      return [notif, ...prev];
+      return [notif, ...prev].slice(0, 120);
     });
     void insertInbox(notif);
+  };
+
+  const simulateBuildingAlertWave = (count = 24) => {
+    if (currentUser.role !== 'admin') {
+      deny('Solo el administrador puede lanzar la prueba de avisos.');
+      return;
+    }
+    if (!buildings.length) {
+      deny('No hay edificios para simular incidencias.');
+      return;
+    }
+    const size = Math.min(40, Math.max(8, count));
+    const wave = buildIncidentWave(buildings, tickets.length, size);
+    setTickets((prev) => [...wave.tickets, ...prev]);
+    wave.notifications.forEach((n, i) => {
+      window.setTimeout(() => {
+        setNotifications((prev) => {
+          if (prev.some((x) => x.id === n.id)) return prev;
+          return [n, ...prev].slice(0, 120);
+        });
+      }, i * 160);
+    });
+    void insertInboxMany(wave.notifications);
+    showToast(
+      'Oleada de avisos',
+      `${wave.notifications.length} vecinos están reportando incidencias. Abre la campana.`,
+      'alert'
+    );
   };
 
   useEffect(() => {
@@ -1052,10 +1186,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           publishNotification({
             id: crypto.randomUUID(),
             title: 'Nueva solicitud de acceso',
-            message: `${pendingUser.name} (${email}) espera que le asignes un rol.`,
+            message: `${pendingUser.name} (${email}) espera un rol. Ábrelo en Usuarios para asignarle vecino/presidente y su vivienda.`,
             type: 'system',
             timestamp: new Date().toISOString(),
             read: false,
+            userId: pendingUser.id,
             targetRoles: ['admin'],
           });
         }
@@ -1124,6 +1259,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
             localStorage.setItem('gest_v2_users', JSON.stringify(merged));
             return merged;
+          });
+          setCurrentUser((prev) => {
+            const next = remote.find((u) => u.email.trim().toLowerCase() === prev.email.trim().toLowerCase());
+            if (!next) return prev;
+            const synced = { ...prev, ...next, id: prev.id || next.id };
+            localStorage.setItem('gest_v2_current_user', JSON.stringify(synced));
+            return synced;
           });
         });
       })
@@ -1288,14 +1430,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetBuildingOperations = (buildingId: string) => {
     if (!canResetFinances(currentUser)) {
-      deny('Solo el administrador puede poner a cero balances e incidencias.');
+      deny('Solo el administrador puede poner a cero los balances.');
       return;
     }
     const bldg = buildings.find((b) => b.id === buildingId);
     if (!bldg) return;
     setTransactions((prev) => prev.filter((t) => t.buildingId !== buildingId));
-    setTickets((prev) => prev.filter((t) => t.buildingId !== buildingId));
-    setNeighborRequests((prev) => prev.filter((r) => r.buildingId !== buildingId));
     setBuildings((prev) =>
       prev.map((b) =>
         b.id === buildingId ? { ...b, repairFund: 0, initialRepairFund: 0, exceptionalExpenses: [] } : b
@@ -1306,7 +1446,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     showToast(
       'Balances reiniciados',
-      `Se pusieron a cero cuentas, movimientos e incidencias de ${bldg.name}.`,
+      `Se eliminaron los movimientos y se pusieron a cero las cajas y cuotas de ${bldg.name}. Las incidencias abiertas se mantienen.`,
       'alert'
     );
   };
@@ -1317,16 +1457,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setTransactions([]);
-    setTickets([]);
-    setNeighborRequests([]);
     setBuildings((prev) =>
       prev.map((b) => ({ ...b, repairFund: 0, initialRepairFund: 0, exceptionalExpenses: [] }))
     );
     setUsers((prev) => prev.map((u) => ({ ...u, feeBalance: 0 })));
-    setSelectedTicketId(null);
     showToast(
-      'Libro en limpio',
-      'Se eliminaron balances, movimientos, incidencias y solicitudes de todos los edificios.',
+      'Balances en limpio',
+      'Se eliminaron los balances generales, movimientos, cajas de reparación y saldos de cuota. Las incidencias no se borran: elimina las resueltas una a una.',
       'alert'
     );
   };
@@ -1740,8 +1877,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Real-time Push Notification
     const notifTitle = data.priority === 'urgente' ? '🚨 INCIDENCIA URGENTE' : '📋 Nueva incidencia';
-    const notifMsg = `En ${newTicket.buildingName} (Piso ${newTicket.floor}, ${newTicket.unitOrArea}): "${newTicket.title}"`;
+    const fromPresident = currentUser.role === 'president';
+    const notifMsg = fromPresident
+      ? `El presidente ${currentUser.name} pide atención en ${newTicket.buildingName} (Piso ${newTicket.floor}, ${newTicket.unitOrArea}): "${newTicket.title}"`
+      : `En ${newTicket.buildingName} (Piso ${newTicket.floor}, ${newTicket.unitOrArea}): "${newTicket.title}"`;
 
+    const audience = ticketNoticeAudience(newTicket);
     const notif: PushNotification = {
       id: crypto.randomUUID(),
       title: notifTitle,
@@ -1750,9 +1891,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       buildingId: newTicket.buildingId,
       buildingName: newTicket.buildingName,
       ticketId: newTicket.id,
+      userId: audience.userId,
       timestamp: new Date().toISOString(),
       read: false,
-      targetRoles: ['admin', 'worker', 'president'],
+      targetRoles: audience.targetRoles,
     };
 
     publishNotification(notif);
@@ -1765,7 +1907,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ticketId: string,
     newStatus: TicketStatus,
     notes?: string,
-    photoUrl?: string
+    photoUrl?: string,
+    scheduledVisitDate?: string
   ) => {
     const targetTicket = tickets.find((t) => t.id === ticketId);
     if (!targetTicket) return;
@@ -1813,6 +1956,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             updatedAt: now,
             resolvedAt: isResolving ? now : t.resolvedAt,
             resolutionNotes: isResolving ? notes || t.resolutionNotes : t.resolutionNotes,
+            scheduledVisitDate: scheduledVisitDate || t.scheduledVisitDate,
             timeline: [...t.timeline, timelineEvent],
           };
         }
@@ -1820,9 +1964,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    const notifTitle = newStatus === 'resuelta' ? '✅ Ticket Resuelto' : '🔄 Actualización de Solicitud';
-    const notifMsg = `${currentUser.name} (${currentUser.role}) actualizó ${targetTicket.ticketNumber} a "${newStatus.toUpperCase()}" en ${targetTicket.buildingName}.`;
+    const visitBit =
+      (scheduledVisitDate || targetTicket.scheduledVisitDate)
+        ? ` Visita: ${scheduledVisitDate || targetTicket.scheduledVisitDate} en ${targetTicket.buildingName} para "${targetTicket.title}".`
+        : ` Trabajo: "${targetTicket.title}" en ${targetTicket.buildingName}.`;
+    const notifTitle =
+      newStatus === 'resuelta'
+        ? '✅ Trabajo terminado'
+        : newStatus === 'en_proceso'
+        ? '🔄 Trabajo en proceso'
+        : '🔄 Actualización de solicitud';
+    const notifMsg = `${currentUser.name} marcó ${targetTicket.ticketNumber} como "${newStatus.replace('_', ' ')}".${visitBit}`;
 
+    const audience = ticketNoticeAudience(targetTicket);
     const notif: PushNotification = {
       id: crypto.randomUUID(),
       title: notifTitle,
@@ -1831,9 +1985,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       buildingId: targetTicket.buildingId,
       buildingName: targetTicket.buildingName,
       ticketId: targetTicket.id,
+      userId: audience.userId,
       timestamp: now,
       read: false,
-      targetRoles: ['admin', 'president', 'worker'],
+      targetRoles: audience.targetRoles,
     };
 
     publishNotification(notif);
@@ -1881,23 +2036,180 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const notif: PushNotification = {
       id: crypto.randomUUID(),
-      title: '🛠️ Ticket Asignado a Trabajador',
-      message: `Se asignó el ticket ${targetTicket.ticketNumber} a ${name}.`,
+      title: '🛠️ Trabajo asignado',
+      message: `${name} debe atender ${targetTicket.ticketNumber} en ${targetTicket.buildingName}: "${targetTicket.title}".`,
       type: 'ticket_status',
       buildingId: targetTicket.buildingId,
       buildingName: targetTicket.buildingName,
       ticketId: targetTicket.id,
+      userId: assignedId,
       timestamp: now,
       read: false,
-      targetRoles: ['admin', 'worker', 'president'],
+      targetRoles: ['admin', 'worker', 'president', 'neighbor'],
     };
     publishNotification(notif);
     showToast('Trabajador Asignado', `${name} ha sido asignado a la incidencia ${targetTicket.ticketNumber}.`, 'success');
   };
 
+  const scheduleTicketVisit = (ticketId: string, date: string) => {
+    const target = tickets.find((t) => t.id === ticketId);
+    if (!target) return;
+    if (!canScheduleTicketVisit(currentUser, target)) {
+      deny('No puedes programar la visita de esta incidencia.');
+      return;
+    }
+    const visitDate = date.trim();
+    if (!visitDate) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(visitDate)) {
+      deny('Indica un día válido para la visita.');
+      return;
+    }
+    const now = new Date().toISOString();
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.id === ticketId
+          ? {
+              ...t,
+              scheduledVisitDate: visitDate,
+              updatedAt: now,
+              timeline: [
+                ...t.timeline,
+                {
+                  id: `tl-${Date.now()}`,
+                  timestamp: now,
+                  authorId: currentUser.id,
+                  authorName: currentUser.name,
+                  authorRole: currentUser.role,
+                  action: `Visita programada el ${visitDate} en ${t.buildingName} para "${t.title}"`,
+                },
+              ],
+            }
+          : t
+      )
+    );
+    const audience = ticketNoticeAudience(target);
+    publishNotification({
+      id: crypto.randomUUID(),
+      title: '📅 Visita de trabajo programada',
+      message: `El ${visitDate} hay que ir a ${target.buildingName} a hacer "${target.title}" (${target.ticketNumber}).`,
+      type: 'ticket_status',
+      buildingId: target.buildingId,
+      buildingName: target.buildingName,
+      ticketId: target.id,
+      userId: target.assignedWorkerId || audience.userId,
+      timestamp: now,
+      read: false,
+      targetRoles: audience.targetRoles,
+    });
+    showToast('Visita en el calendario', `El ${visitDate}: ${target.buildingName} · ${target.title}`, 'success');
+  };
+
+  const notifyAdmin = (message: string) => {
+    if (!canNotifyAdmin(currentUser)) {
+      deny('Solo el presidente o un vecino pueden avisar al administrador.');
+      return;
+    }
+    const text = message.trim();
+    if (!text) {
+      deny('Escribe qué necesita el administrador.');
+      return;
+    }
+    const community = currentUser.buildingName || buildings.find((b) => b.id === currentUser.buildingId)?.name;
+    publishNotification({
+      id: crypto.randomUUID(),
+      title: currentUser.role === 'president' ? 'Aviso del presidente' : 'Aviso de un vecino',
+      message: `${currentUser.name}${community ? ` (${community})` : ''}: ${text}`,
+      type: 'system',
+      buildingId: currentUser.buildingId,
+      buildingName: community,
+      timestamp: new Date().toISOString(),
+      read: false,
+      targetRoles: ['admin'],
+    });
+    showToast('Aviso enviado', 'El administrador ha recibido tu mensaje en la campana.', 'success');
+  };
+
   const updateTicketDetails = (ticketId: string, updates: Partial<Ticket>) => {
     setTickets((prev) =>
       prev.map((t) => (t.id === ticketId ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t))
+    );
+  };
+
+  const applyPriority = (ticket: Ticket, priority: TicketPriority): Ticket => {
+    if (ticket.priority === priority) return ticket;
+    const now = new Date().toISOString();
+    return {
+      ...ticket,
+      priority,
+      updatedAt: now,
+      timeline: [
+        ...(ticket.timeline || []),
+        {
+          id: crypto.randomUUID(),
+          timestamp: now,
+          authorId: currentUser.id,
+          authorName: currentUser.name,
+          authorRole: currentUser.role,
+          action: `Prioridad cambiada a ${priority.toUpperCase()}`,
+        },
+      ],
+    };
+  };
+
+  const setTicketPriority = (ticketId: string, priority: TicketPriority) => {
+    const target = tickets.find((t) => t.id === ticketId);
+    if (!target) return;
+    if (!canSetTicketPriority(currentUser, target)) {
+      deny('No puedes cambiar la prioridad de esta incidencia.');
+      return;
+    }
+    setTickets((prev) => prev.map((t) => (t.id === ticketId ? applyPriority(t, priority) : t)));
+    if (priority === 'urgente' && target.priority !== 'urgente') {
+      publishNotification({
+        id: crypto.randomUUID(),
+        title: '🚨 INCIDENCIA URGENTE',
+        message: `${currentUser.name} marcó como urgente ${target.ticketNumber} en ${target.buildingName}: "${target.title}"`,
+        type: 'ticket_status',
+        buildingId: target.buildingId,
+        buildingName: target.buildingName,
+        ticketId: target.id,
+        userId: target.createdBy?.id,
+        timestamp: new Date().toISOString(),
+        read: false,
+        targetRoles: ['admin', 'worker', 'president', 'neighbor'],
+      });
+    }
+    showToast(
+      priority === 'urgente' ? 'Marcada urgente' : 'Prioridad actualizada',
+      `${target.ticketNumber} ahora es ${priority}.`,
+      priority === 'urgente' ? 'alert' : 'info'
+    );
+  };
+
+  const setTicketsPriority = (ticketIds: string[], priority: TicketPriority) => {
+    const allowed = tickets.filter((t) => ticketIds.includes(t.id) && canSetTicketPriority(currentUser, t));
+    if (!allowed.length) {
+      deny('No hay incidencias que puedas priorizar.');
+      return;
+    }
+    const idSet = new Set(allowed.map((t) => t.id));
+    setTickets((prev) => prev.map((t) => (idSet.has(t.id) ? applyPriority(t, priority) : t)));
+    if (priority === 'urgente') {
+      const buildingsNamed = [...new Set(allowed.map((t) => t.buildingName))].join(', ');
+      publishNotification({
+        id: crypto.randomUUID(),
+        title: '🚨 Varias incidencias urgentes',
+        message: `${currentUser.name} marcó ${allowed.length} partes como urgentes (${buildingsNamed}).`,
+        type: 'ticket_status',
+        timestamp: new Date().toISOString(),
+        read: false,
+        targetRoles: ['admin', 'worker', 'president'],
+      });
+    }
+    showToast(
+      'Prioridad actualizada',
+      `${allowed.length} incidencias en ${[...new Set(allowed.map((t) => t.buildingName))].length} fincas → ${priority}.`,
+      priority === 'urgente' ? 'alert' : 'info'
     );
   };
 
@@ -1907,9 +2219,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     const target = tickets.find((t) => t.id === ticketId);
+    if (!target) return;
+    if (!isTicketFinished(target)) {
+      deny('Solo puedes borrar incidencias cuando ya están resueltas o rechazadas.');
+      return;
+    }
     setTickets((prev) => prev.filter((t) => t.id !== ticketId));
     if (selectedTicketId === ticketId) setSelectedTicketId(null);
-    showToast('Incidencia eliminada', target ? `Se eliminó ${target.ticketNumber}.` : 'La incidencia fue eliminada.', 'alert');
+    showToast('Incidencia eliminada', `Se eliminó el reporte ${target.ticketNumber}.`, 'alert');
   };
 
   const registerServiceAccounting = (data: {
@@ -2198,6 +2515,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type: 'system',
       timestamp: new Date().toISOString(),
       read: false,
+      userId: data.workerId,
       targetRoles: ['admin', 'worker'],
     };
     publishNotification(notif);
@@ -2276,12 +2594,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo vecinos y presidentes pueden solicitar servicios SOFER.');
       return;
     }
+    const requestedUnit = (data.unitOrArea || '').trim() || currentUser.unitOrArea || '';
+    const requestedBuildingId = currentUser.buildingId || data.buildingId;
     data = {
       ...data,
       neighborId: currentUser.id,
       neighborName: currentUser.name,
-      buildingId: currentUser.buildingId || data.buildingId,
-      unitOrArea: currentUser.unitOrArea || data.unitOrArea,
+      buildingId: requestedBuildingId,
+      unitOrArea: requestedUnit,
     };
     const newRequest: NeighborServiceRequest = {
       ...data,
@@ -2290,19 +2610,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
     setNeighborRequests((prev) => [...prev, newRequest]);
-    
-    // Notify admin & president
-    const notif: PushNotification = {
+
+    const community = buildings.find((b) => b.id === requestedBuildingId);
+    publishNotification({
       id: crypto.randomUUID(),
-      title: '🔔 Nueva Solicitud de Servicio',
-      message: `El vecino ${data.neighborName} ha solicitado el servicio "${data.serviceName}".`,
+      title: 'Nueva solicitud de servicio',
+      message: `${data.neighborName} pide "${data.serviceName}" en ${community?.name || 'comunidad'} · ${requestedUnit || 'sin vivienda'}. Pulsa para abrirla y guardar la vivienda en su cuenta.`,
       type: 'system',
       timestamp: new Date().toISOString(),
       read: false,
-      buildingId: data.buildingId,
-      targetRoles: ['admin', 'president']
-    };
-    publishNotification(notif);
+      buildingId: requestedBuildingId,
+      requestId: newRequest.id,
+      userId: currentUser.id,
+      targetRoles: ['admin', 'president'],
+    });
+  };
+
+  const applyRequestHousingToUser = (requestId: string) => {
+    if (!canManageUsers(currentUser)) {
+      deny('Solo el administrador puede asignar la vivienda a la cuenta.');
+      return;
+    }
+    const request = neighborRequests.find((r) => r.id === requestId);
+    if (!request) {
+      deny('No se encontró esa solicitud.');
+      return;
+    }
+    const community = buildings.find((b) => b.id === request.buildingId);
+    if (!community) {
+      deny('El edificio de la solicitud no está registrado.');
+      return;
+    }
+    const parsed = parseHousing(request.unitOrArea);
+    updateUser(request.neighborId, {
+      buildingId: community.id,
+      buildingName: community.name,
+      floor: parsed.floor,
+      unitOrArea: request.unitOrArea,
+    });
+    showToast(
+      'Vivienda asignada',
+      `Se guardó ${community.name} · ${request.unitOrArea} en la cuenta de ${request.neighborName}.`,
+      'success'
+    );
   };
 
   const updateNeighborRequest = (id: string, status: NeighborServiceRequest['status'], scheduledDate?: string) => {
@@ -2312,16 +2662,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const updated = { ...r, status };
           if (scheduledDate) updated.scheduledDate = scheduledDate;
           
-          if (status === 'completado') {
+          if (status === 'completado' || status === 'en_proceso' || status === 'cancelado') {
             const notif: PushNotification = {
               id: crypto.randomUUID(),
-              title: '✅ Servicio Completado',
-              message: `El servicio "${r.serviceName}" para ${r.neighborName} ha sido marcado como completado.`,
+              title:
+                status === 'completado'
+                  ? 'Tu servicio SOFER está listo'
+                  : status === 'en_proceso'
+                  ? 'Tu servicio SOFER está en proceso'
+                  : 'Servicio SOFER cancelado',
+              message: `La solicitud "${r.serviceName}" (${r.unitOrArea}) pasó a ${status.replace('_', ' ')}.`,
               type: 'system',
               timestamp: new Date().toISOString(),
               read: false,
               buildingId: r.buildingId,
-              targetRoles: ['neighbor']
+              userId: r.neighborId,
+              targetRoles: ['neighbor', 'president'],
             };
             publishNotification(notif);
           }
@@ -2444,6 +2800,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   }, [currentUser, transactions]);
 
+  const communityDirectory = useMemo(
+    () =>
+      buildings.map((b) => ({
+        id: b.id,
+        name: b.name,
+        address: b.address,
+        city: b.city,
+        floors: b.floors,
+      })),
+    [buildings]
+  );
+
   const visibleUsers = useMemo(() => {
     if (currentUser.role === 'admin') return users;
     if (currentUser.role === 'president') {
@@ -2506,7 +2874,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createTicket,
         updateTicketStatus,
         assignWorkerToTicket,
+        scheduleTicketVisit,
+        notifyAdmin,
         updateTicketDetails,
+        setTicketPriority,
+        setTicketsPriority,
         deleteTicket,
         registerServiceAccounting,
         addRepairExpenseToTicket,
@@ -2529,17 +2901,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markNotificationAsRead,
         markAllNotificationsAsRead,
         unreadCount,
+        simulateBuildingAlertWave,
         soundEnabled,
         setSoundEnabled,
         accessibleBuildings,
         accessibleTickets,
         accessibleTransactions,
+        communityDirectory,
         activeTab,
         setActiveTab,
         selectedBuildingId,
         setSelectedBuildingId,
         selectedTicketId,
         setSelectedTicketId,
+        adminInboxTarget,
+        setAdminInboxTarget,
+        applyRequestHousingToUser,
         toasts,
         dismissToast,
         showToast,

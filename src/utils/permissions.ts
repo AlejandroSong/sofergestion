@@ -37,8 +37,22 @@ export function canDeleteTickets(user: User) {
   return isAdmin(user);
 }
 
+export function isTicketFinished(ticket?: Ticket) {
+  return ticket?.status === 'resuelta' || ticket?.status === 'rechazada';
+}
+
+export function canDeleteFinishedTicket(user: User, ticket?: Ticket) {
+  return isAdmin(user) && isTicketFinished(ticket);
+}
+
 export function canAssignWorkers(user: User) {
   return isAdmin(user);
+}
+
+export function canSetTicketPriority(user: User, ticket?: Ticket) {
+  if (isAdmin(user)) return true;
+  if (isPresident(user)) return ticket ? sameBuilding(user, ticket.buildingId) : true;
+  return false;
 }
 
 export function canEditNeighborFees(actor: User, target?: User | null) {
@@ -47,8 +61,9 @@ export function canEditNeighborFees(actor: User, target?: User | null) {
 }
 
 export function canOpenBuilding(user: User, buildingId: string) {
+  if (!buildingId) return false;
   if (isAdmin(user) || isWorker(user)) return true;
-  if (isPresident(user)) return sameBuilding(user, buildingId);
+  if (isPresident(user) || isNeighbor(user)) return sameBuilding(user, buildingId);
   return false;
 }
 
@@ -81,6 +96,24 @@ export function canUpdateTicketStatus(user: User, ticket?: Ticket) {
 
 export function canChargeRepairFund(user: User, ticket?: Ticket) {
   return canUpdateTicketStatus(user, ticket);
+}
+
+export function canScheduleTicketVisit(user: User, ticket?: Ticket) {
+  if (!ticket) return false;
+  if (isAdmin(user)) return true;
+  if (isPresident(user)) return sameBuilding(user, ticket.buildingId);
+  if (isWorker(user)) {
+    return (
+      !ticket.assignedWorkerId ||
+      ticket.assignedWorkerId === user.id ||
+      ticket.assignedWorkerName === user.name
+    );
+  }
+  return false;
+}
+
+export function canNotifyAdmin(user: User) {
+  return isPresident(user) || isNeighbor(user);
 }
 
 export function canRequestSoferService(user: User) {

@@ -30,10 +30,12 @@ import {
   Tag,
   AlertTriangle,
   Sparkles,
+  Bell,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { exportAccountingToExcel, exportBuildingsPortfolioToExcel, exportTicketsToExcel, formatCurrency } from '../utils/exportUtils';
 import { collectWorkerRoster, countResolvedJobs } from '../utils/workers';
+import { canDeleteFinishedTicket } from '../utils/permissions';
 import { Building, Ticket } from '../types';
 import { WorkerPayoutModal } from './WorkerPayoutModal';
 import { AdjustRepairFundModal } from './AdjustRepairFundModal';
@@ -73,11 +75,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     deleteTicket,
     deleteTransaction,
     deleteWorkerPayout,
+    resetAllOperations,
+    simulateBuildingAlertWave,
+    setTicketPriority,
+    setTicketsPriority,
+    adminInboxTarget,
+    setAdminInboxTarget,
   } = useApp();
 
   const [buildingSearch, setBuildingSearch] = useState('');
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+
+  useEffect(() => {
+    if (adminInboxTarget?.type === 'users') {
+      setIsUserManagementOpen(true);
+    }
+  }, [adminInboxTarget]);
+  const [alertWaveRunning, setAlertWaveRunning] = useState(false);
   const [selectedBuildingToAdjust, setSelectedBuildingToAdjust] = useState<Building | null>(null);
   const [buildingToEdit, setBuildingToEdit] = useState<Building | null>(null);
   const [buildingToAssign, setBuildingToAssign] = useState<Building | null>(null);
@@ -92,7 +107,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [ticketSearch, setTicketSearch] = useState('');
   const [ticketStatusFilter, setTicketStatusFilter] = useState<'all' | 'assigned_to_me' | 'pendiente' | 'en_proceso' | 'resuelta'>('all');
   const [ticketPriorityFilter, setTicketPriorityFilter] = useState<string>('all');
-  const [ticketBuildingFilter, setTicketBuildingFilter] = useState<string>('all');
+  const [ticketBuildingIds, setTicketBuildingIds] = useState<string[]>([]);
+  const [selectedIncidentIds, setSelectedIncidentIds] = useState<string[]>([]);
   
   React.useEffect(() => {
     if (activeTab === 'buildings') {
@@ -142,7 +158,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return false;
     }
     if (ticketPriorityFilter !== 'all' && t.priority !== ticketPriorityFilter) return false;
-    if (ticketBuildingFilter !== 'all' && t.buildingId !== ticketBuildingFilter) return false;
+    if (ticketBuildingIds.length > 0 && !ticketBuildingIds.includes(t.buildingId)) return false;
     if (ticketSearch) {
       const q = ticketSearch.toLowerCase();
       return (
@@ -330,23 +346,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <span className="text-xs font-bold text-[#16202E] text-center">Mis edificios</span>
             </button>
+
+            <button
+              type="button"
+              disabled={alertWaveRunning}
+              onClick={() => {
+                if (alertWaveRunning) return;
+                setAlertWaveRunning(true);
+                simulateBuildingAlertWave(24);
+                window.setTimeout(() => setAlertWaveRunning(false), 24 * 160 + 800);
+              }}
+              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-red-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group disabled:opacity-60"
+            >
+              <div className="p-3 bg-red-50 text-red-600 rounded-xl group-hover:scale-110 transition-transform">
+                <Bell className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-[#16202E] text-center">
+                {alertWaveRunning ? 'Enviando avisos…' : 'Simular avisos'}
+              </span>
+            </button>
           </>
         )}
       </div>
 
       {currentUser.role === 'admin' && buildings.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-[#16202E]">Acceso rápido a edificios</h3>
+              <p className="text-[11px] text-[#5A6B82]">Pulsa un inmueble para abrirlo. También puedes ir a Mis edificios más abajo.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('¿Eliminar todos los balances generales (movimientos, cajas y cuotas) y empezar de 0? Las incidencias no se borran.')) {
+                  resetAllOperations();
+                }
+              }}
+              className="shrink-0 px-3 py-2 text-[11px] font-bold rounded-xl bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 cursor-pointer"
+            >
+              Borrar balances generales
+            </button>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
           {buildings.map((b) => (
             <button
               key={b.id}
               type="button"
               onClick={() => setSelectedBuildingId(b.id)}
-              className="shrink-0 px-3 py-2 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#0A2E6D] text-left cursor-pointer"
+              className="shrink-0 min-w-[180px] px-3 py-2.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] hover:border-[#0A2E6D] hover:bg-white text-left cursor-pointer"
             >
-              <p className="text-xs font-bold text-[#16202E]">{b.name}</p>
+              <p className="text-xs font-bold text-[#16202E] truncate">{b.name}</p>
               <p className="text-[10px] text-[#5A6B82]">{b.totalUnits} uds · {b.floors} pisos · {b.monthlyQuotaFee} €/mes</p>
+              <p className="text-[10px] font-semibold text-[#0A2E6D] mt-1">Abrir finca →</p>
             </button>
           ))}
+          </div>
         </div>
       )}
 
@@ -711,13 +766,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        if (confirm(`¿Poner a cero balances, cuotas e incidencias de ${bldg.name}?`)) {
+                        if (confirm(`¿Eliminar los balances de ${bldg.name} y empezar de 0? Las incidencias no se borran.`)) {
                           resetBuildingOperations(bldg.id);
                         }
                       }}
                       className="w-full py-1.5 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-100 rounded-lg cursor-pointer"
                     >
-                      Empezar de 0
+                      Empezar balances de 0
                     </button>
                     </div>
                   </div>
@@ -915,7 +970,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Gestión de Incidencias & Tareas de Mantenimiento
             </h3>
             <p className="text-xs sm:text-sm text-[#5A6B82] mt-0.5">
-              Supervisión de averías reportadas por los vecinos y presidentes, asignación de técnicos y resolución de partes.
+              El administrador puede borrar un reporte en cualquier momento cuando esté resuelto o rechazado. Los abiertos no se eliminan.
             </p>
           </div>
 
@@ -1002,11 +1057,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5" />
               Resueltas ({resolvedTicketsCount})
             </button>
+
+            <button
+              onClick={() => {
+                setTicketPriorityFilter(ticketPriorityFilter === 'urgente' ? 'all' : 'urgente');
+              }}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                ticketPriorityFilter === 'urgente'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : 'bg-red-50 text-red-700 hover:bg-red-100'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Urgentes ({urgentTicketsCount})
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-[#E2E8F0] space-y-2">
+            <p className="text-[11px] font-semibold text-[#5A6B82]">Fincas (puedes marcar varias)</p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setTicketBuildingIds([])}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${
+                  ticketBuildingIds.length === 0
+                    ? 'bg-[#0A2E6D] text-white'
+                    : 'bg-[#F4F6FA] text-[#5A6B82] border border-[#E2E8F0]'
+                }`}
+              >
+                Todas ({buildings.length})
+              </button>
+              {buildings.map((b) => {
+                const active = ticketBuildingIds.includes(b.id);
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() =>
+                      setTicketBuildingIds((prev) =>
+                        prev.includes(b.id) ? prev.filter((id) => id !== b.id) : [...prev, b.id]
+                      )
+                    }
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer ${
+                      active
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-[#F4F6FA] text-[#16202E] border border-[#E2E8F0]'
+                    }`}
+                  >
+                    {b.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Search and Dropdowns Row */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 pt-2 border-t border-[#E2E8F0]">
-            <div className="md:col-span-5 relative">
+            <div className="md:col-span-9 relative">
               <Search className="w-4 h-4 text-[#5A6B82] absolute left-3 top-2.5" />
               <input
                 type="text"
@@ -1025,49 +1132,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </div>
 
-            <div className="md:col-span-4">
-              <select
-                value={ticketBuildingFilter}
-                onChange={(e) => setTicketBuildingFilter(e.target.value)}
-                className="w-full py-2 px-3 bg-[#F4F6FA] border border-[#CBD5E1] rounded-xl text-xs text-[#16202E] focus:outline-none focus:border-[#0A2E6D]"
-              >
-                <option value="all">🏢 Todos los Edificios ({buildings.length})</option>
-                {buildings.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} ({tickets.filter((t) => t.buildingId === b.id).length} tickets)
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div className="md:col-span-3">
               <select
                 value={ticketPriorityFilter}
                 onChange={(e) => setTicketPriorityFilter(e.target.value)}
                 className="w-full py-2 px-3 bg-[#F4F6FA] border border-[#CBD5E1] rounded-xl text-xs text-[#16202E] focus:outline-none focus:border-[#0A2E6D]"
               >
-                <option value="all">⚡ Cualquier Prioridad</option>
-                <option value="urgente">🔴 Solo Urgentes ({urgentTicketsCount})</option>
-                <option value="alta">🟠 Prioridad Alta</option>
-                <option value="media">🔵 Prioridad Media</option>
-                <option value="baja">⚪ Prioridad Baja</option>
+                <option value="all">Cualquier Prioridad</option>
+                <option value="urgente">Solo Urgentes ({urgentTicketsCount})</option>
+                <option value="alta">Prioridad Alta</option>
+                <option value="media">Prioridad Media</option>
+                <option value="baja">Prioridad Baja</option>
               </select>
             </div>
           </div>
         </div>
+
+        {currentUser.role === 'admin' && selectedIncidentIds.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-xl bg-red-50 border border-red-200">
+            <span className="text-xs font-bold text-red-800">{selectedIncidentIds.length} seleccionadas</span>
+            <button
+              type="button"
+              onClick={() => {
+                setTicketsPriority(selectedIncidentIds, 'urgente');
+                setSelectedIncidentIds([]);
+              }}
+              className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-red-600 text-white cursor-pointer"
+            >
+              Marcar urgentes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTicketsPriority(selectedIncidentIds, 'alta');
+                setSelectedIncidentIds([]);
+              }}
+              className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-white border border-[#E2E8F0] text-[#16202E] cursor-pointer"
+            >
+              Quitar urgente
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIncidentIds([])}
+              className="text-[11px] font-semibold text-[#5A6B82] cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
 
         {/* Results Counter */}
         <div className="flex items-center justify-between text-xs text-[#5A6B82] px-1">
           <span>
             Mostrando <strong>{filteredIncidents.length}</strong> de <strong>{tickets.length}</strong> incidencias
           </span>
-          {(ticketSearch || ticketStatusFilter !== 'all' || ticketPriorityFilter !== 'all' || ticketBuildingFilter !== 'all') && (
+          {(ticketSearch || ticketStatusFilter !== 'all' || ticketPriorityFilter !== 'all' || ticketBuildingIds.length > 0) && (
             <button
               onClick={() => {
                 setTicketSearch('');
                 setTicketStatusFilter('all');
                 setTicketPriorityFilter('all');
-                setTicketBuildingFilter('all');
+                setTicketBuildingIds([]);
               }}
               className="text-[#0A2E6D] hover:underline font-semibold cursor-pointer"
             >
@@ -1075,6 +1200,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
           )}
         </div>
+
+        {currentUser.role === 'admin' && filteredIncidents.some((t) => t.status === 'resuelta' || t.status === 'rechazada') && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const done = filteredIncidents.filter((t) => t.status === 'resuelta' || t.status === 'rechazada');
+                if (!done.length) return;
+                if (confirm(`¿Eliminar ${done.length} reportes ya resueltos o rechazados?`)) {
+                  done.forEach((t) => deleteTicket(t.id));
+                }
+              }}
+              className="px-3 py-2 text-[11px] font-bold rounded-xl bg-red-50 border border-red-200 text-red-700 cursor-pointer"
+            >
+              Eliminar reportes resueltos visibles
+            </button>
+          </div>
+        )}
 
         {/* Tickets Grid */}
         {filteredIncidents.length === 0 ? (
@@ -1092,7 +1235,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   setTicketSearch('');
                   setTicketStatusFilter('all');
                   setTicketPriorityFilter('all');
-                  setTicketBuildingFilter('all');
+                  setTicketBuildingIds([]);
                 }}
                 className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-[#16202E] rounded-xl text-xs font-semibold cursor-pointer"
               >
@@ -1127,6 +1270,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {/* Header: Code, Priority, Status */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
+                        {currentUser.role === 'admin' && tkt.status !== 'resuelta' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIncidentIds.includes(tkt.id)}
+                            onChange={(e) => {
+                              const on = e.target.checked;
+                              setSelectedIncidentIds((prev) =>
+                                on ? [...prev, tkt.id] : prev.filter((id) => id !== tkt.id)
+                              );
+                            }}
+                            className="rounded border-[#CBD5E1]"
+                            title="Seleccionar para marcar urgente"
+                          />
+                        )}
                         <span className="font-mono text-[11px] font-bold text-[#0A2E6D] bg-[#0A2E6D]/10 px-2 py-0.5 rounded-lg border border-[#0A2E6D]/20">
                           {tkt.ticketNumber}
                         </span>
@@ -1227,7 +1384,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     )}
                   </div>
 
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 flex flex-col gap-2">
+                    {currentUser.role === 'admin' && tkt.status !== 'resuelta' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTicketPriority(
+                            tkt.id,
+                            tkt.priority === 'urgente' ? 'alta' : 'urgente'
+                          )
+                        }
+                        className={`w-full py-1.5 rounded-xl text-[11px] font-bold cursor-pointer border ${
+                          tkt.priority === 'urgente'
+                            ? 'bg-white border-red-200 text-red-700'
+                            : 'bg-red-50 border-red-200 text-red-700'
+                        }`}
+                      >
+                        {tkt.priority === 'urgente' ? 'Quitar urgente' : 'Marcar urgente'}
+                      </button>
+                    )}
+                    <div className="flex gap-2">
                     <button
                       onClick={() => setSelectedTicketId(tkt.id)}
                       className="flex-1 py-2 px-3 bg-[#0A2E6D] hover:bg-[#D4B370] text-white hover:text-[#0A0A0A] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
@@ -1235,18 +1411,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <ArrowUpRight className="w-4 h-4" />
                       Ver y Gestionar Incidencia
                     </button>
-                    {currentUser.role === 'admin' && (
+                    {canDeleteFinishedTicket(currentUser, tkt) && (
                       <button
                         type="button"
                         onClick={() => {
-                          if (confirm(`¿Eliminar la incidencia ${tkt.ticketNumber}?`)) deleteTicket(tkt.id);
+                          if (confirm(`¿Eliminar el reporte ${tkt.ticketNumber}? Solo se pueden borrar partes ya resueltos o rechazados.`)) deleteTicket(tkt.id);
                         }}
-                        className="p-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
-                        title="Eliminar incidencia"
+                        className="px-3 py-2 rounded-xl border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 text-[11px] font-bold cursor-pointer flex items-center gap-1"
+                        title="Eliminar reporte resuelto"
                       >
                         <Trash2 className="w-4 h-4" />
+                        Eliminar
                       </button>
                     )}
+                    </div>
                   </div>
                 </div>
               );
@@ -1366,7 +1544,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <UserManagementModal
         isOpen={isUserManagementOpen}
-        onClose={() => setIsUserManagementOpen(false)}
+        onClose={() => {
+          setIsUserManagementOpen(false);
+          if (adminInboxTarget?.type === 'users') setAdminInboxTarget(null);
+        }}
       />
 
       <AddBuildingModal

@@ -23,6 +23,7 @@ import {
   Tag,
   BadgePercent
 } from 'lucide-react';
+import { HousingPanel } from './HousingPanel';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
 import { ServiceRequestModal } from './ServiceRequestModal';
 import { exportNeighborReceiptPDF } from '../utils/exportUtils';
@@ -45,7 +46,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
     showToast
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'cuentas' | 'incidencias' | 'recibos' | 'servicios'>('cuentas');
+  const [activeTab, setActiveTab] = useState<'cuentas' | 'incidencias' | 'recibos' | 'servicios' | 'vivienda'>('cuentas');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -58,6 +59,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
     if (globalActiveTab === 'tickets') setActiveTab('incidencias');
     if (globalActiveTab === 'dashboard') setActiveTab('cuentas');
     if (globalActiveTab === 'recibos') setActiveTab('recibos');
+    if (globalActiveTab === 'vivienda') setActiveTab('vivienda');
   }, [globalActiveTab]);
 
   const building = buildings.find(b => b.id === currentUser.buildingId);
@@ -72,10 +74,12 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
 
   if (!building) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-[#5A6B82]">
-        <Building2 className="w-16 h-16 mb-4 opacity-50" />
-        <p className="text-lg font-semibold">No tienes un edificio asignado.</p>
-        <p className="text-sm">Contacta con el administrador para que te asigne tu vivienda.</p>
+      <div className="max-w-3xl mx-auto py-8 px-4 space-y-4">
+        <h1 className="text-2xl font-extrabold text-[#16202E]">Tu vivienda</h1>
+        <p className="text-sm text-[#5A6B82]">
+          Indica en qué comunidad vives y tu piso y número. El administrador puede corregirlo después.
+        </p>
+        <HousingPanel />
       </div>
     );
   }
@@ -671,7 +675,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
       </div>
 
       {/* Tabs Navigation (Intuitive Menu with Prominent SOFER Services) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <button 
           onClick={() => setActiveTab('cuentas')}
           className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl transition-all cursor-pointer shadow-xs group border ${
@@ -706,6 +710,18 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
             <Download className="w-6 h-6" />
           </div>
           <span className="text-xs font-bold text-center">Recibos Oficiales</span>
+        </button>
+
+        <button 
+          onClick={() => setActiveTab('vivienda')}
+          className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl transition-all cursor-pointer shadow-xs group border ${
+            activeTab === 'vivienda' ? 'bg-[#0A2E6D] text-white border-[#0A2E6D]' : 'bg-white text-[#5A6B82] border-[#E2E8F0] hover:border-[#0A2E6D]/40'
+          }`}
+        >
+          <div className={`p-3 rounded-xl transition-transform ${activeTab === 'vivienda' ? 'bg-white/20' : 'bg-teal-50 text-teal-700 group-hover:scale-110'}`}>
+            <Home className="w-6 h-6" />
+          </div>
+          <span className="text-xs font-bold text-center">Mi Vivienda</span>
         </button>
 
         {/* Enhanced Prominent Button for SOFER Services */}
@@ -743,6 +759,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
       {activeTab === 'incidencias' && renderIncidencias()}
       {activeTab === 'recibos' && renderRecibos()}
       {activeTab === 'servicios' && renderServicios()}
+      {activeTab === 'vivienda' && <HousingPanel title="Datos de mi vivienda" />}
     </div>
   );
 };

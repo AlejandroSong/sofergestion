@@ -37,6 +37,7 @@ import { WorkerRepairFundModal } from './WorkerRepairFundModal';
 import { WorkerServiceModal } from './WorkerServiceModal';
 import { ExpirationAlerts } from './ExpirationAlerts';
 import { WorkerExceptionalExpensesModal } from './WorkerExceptionalExpensesModal';
+import { WorkerVisitCalendar } from './WorkerVisitCalendar';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
 
 export const WorkerDashboard: React.FC = () => {
@@ -46,6 +47,7 @@ export const WorkerDashboard: React.FC = () => {
     tickets,
     transactions,
     updateTicketStatus,
+    scheduleTicketVisit,
     setSelectedTicketId,
     allUsers,
   } = useApp();
@@ -546,6 +548,8 @@ export const WorkerDashboard: React.FC = () => {
         </div>
       </div>
 
+      <WorkerVisitCalendar tickets={myAssignedTickets} onOpenTicket={setSelectedTicketId} />
+
       {/* Main Jobs & Maintenance Requests List */}
       <div className="bg-[#F4F6FA] rounded-2xl border border-[#E2E8F0] p-6 shadow-md space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -676,6 +680,12 @@ export const WorkerDashboard: React.FC = () => {
                         </span>
                         <span className="text-[#5A6B82]">Piso {tkt.floor || '-'} • {tkt.unitOrArea || 'General'}</span>
                       </div>
+                      {tkt.scheduledVisitDate && (
+                        <p className="text-[11px] font-semibold text-[#0A2E6D] flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          El {formatIsoDateEs(tkt.scheduledVisitDate)} ir a {tkt.buildingName} a hacer este trabajo
+                        </p>
+                      )}
                       <div className="flex items-center justify-between text-[11px] text-[#5A6B82] pt-0.5">
                         <span>Reportó: {tkt.createdBy?.name || 'Sistema'}</span>
                         {repairExpensesCount > 0 && (
@@ -691,10 +701,23 @@ export const WorkerDashboard: React.FC = () => {
                   <div className="mt-4 pt-3 border-t border-[#E2E8F0] space-y-2">
                     {/* Status quick switcher */}
                     <div className="flex items-center justify-between gap-1 text-xs">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <input
+                          type="date"
+                          value={tkt.scheduledVisitDate || ''}
+                          onChange={(e) => scheduleTicketVisit(tkt.id, e.target.value)}
+                          className="px-2 py-1 rounded-lg text-[11px] border border-[#E2E8F0] bg-white text-[#16202E]"
+                          title="Día de la visita"
+                        />
                         <button
                           onClick={() =>
-                            updateTicketStatus(tkt.id, 'en_proceso', 'Trabajador inició la revisión y reparación en sitio')
+                            updateTicketStatus(
+                              tkt.id,
+                              'en_proceso',
+                              'Trabajador inició la revisión y reparación en sitio',
+                              undefined,
+                              tkt.scheduledVisitDate
+                            )
                           }
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                             isInProcess

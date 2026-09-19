@@ -26,6 +26,9 @@ const MainAppContent: React.FC = () => {
     setSelectedBuildingId,
     selectedTicketId,
     setSelectedTicketId,
+    getBuildingById,
+    adminInboxTarget,
+    setAdminInboxTarget,
   } = useApp();
 
   const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
@@ -37,10 +40,17 @@ const MainAppContent: React.FC = () => {
   const [isSoferOpen, setIsSoferOpen] = useState(false);
 
   useEffect(() => {
-    if (selectedBuildingId && !canOpenBuilding(currentUser, selectedBuildingId)) {
+    if (adminInboxTarget?.type === 'sofer' && canManageSoferCatalog(currentUser)) {
+      setIsSoferOpen(true);
+    }
+  }, [adminInboxTarget, currentUser]);
+
+  useEffect(() => {
+    if (!selectedBuildingId) return;
+    if (!canOpenBuilding(currentUser, selectedBuildingId) || !getBuildingById(selectedBuildingId)) {
       setSelectedBuildingId(null);
     }
-  }, [selectedBuildingId, currentUser, setSelectedBuildingId]);
+  }, [selectedBuildingId, currentUser, setSelectedBuildingId, getBuildingById]);
 
   if (!authReady) {
     return (
@@ -164,7 +174,13 @@ const MainAppContent: React.FC = () => {
         onClose={() => setIsReportsOpen(false)}
       />
 
-      <SoferServicesModal isOpen={isSoferOpen && canManageSoferCatalog(currentUser)} onClose={() => setIsSoferOpen(false)} />
+      <SoferServicesModal
+        isOpen={isSoferOpen && canManageSoferCatalog(currentUser)}
+        onClose={() => {
+          setIsSoferOpen(false);
+          if (adminInboxTarget?.type === 'sofer') setAdminInboxTarget(null);
+        }}
+      />
 
       {/* Footer */}
       <footer className="border-t border-[#E2E8F0] bg-[#F4F6FA] py-4 text-center text-xs text-[#5A6B82]">

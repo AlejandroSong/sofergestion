@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sparkles, Trash2, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Home, Sparkles, Trash2, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/exportUtils';
 import { NeighborService } from '../types';
@@ -18,6 +18,9 @@ export const SoferServicesModal: React.FC<SoferServicesModalProps> = ({ isOpen, 
     neighborRequests,
     updateNeighborRequest,
     deleteNeighborRequest,
+    applyRequestHousingToUser,
+    buildings,
+    adminInboxTarget,
     currentUser,
   } = useApp();
 
@@ -46,6 +49,12 @@ export const SoferServicesModal: React.FC<SoferServicesModalProps> = ({ isOpen, 
     setNewService({ name: '', description: '', price: 0, category: 'mantenimiento', available: true });
     setIsAdding(false);
   };
+
+  useEffect(() => {
+    if (isOpen && adminInboxTarget?.type === 'sofer') {
+      setTab('requests');
+    }
+  }, [isOpen, adminInboxTarget]);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70">
@@ -161,15 +170,32 @@ export const SoferServicesModal: React.FC<SoferServicesModalProps> = ({ isOpen, 
           ) : (
             <div className="space-y-2">
               {neighborRequests.length === 0 && <p className="text-sm text-[#5A6B82]">No hay solicitudes.</p>}
-              {neighborRequests.map((r) => (
-                <div key={r.id} className="border border-[#E2E8F0] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              {neighborRequests.map((r) => {
+                const community = buildings.find((b) => b.id === r.buildingId);
+                const highlight = adminInboxTarget?.requestId === r.id;
+                return (
+                <div
+                  key={r.id}
+                  className={`border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                    highlight ? 'border-[#0A2E6D] bg-blue-50' : 'border-[#E2E8F0]'
+                  }`}
+                >
                   <div>
                     <p className="font-semibold text-sm">{r.serviceName}</p>
                     <p className="text-xs text-[#5A6B82]">
-                      {r.neighborName} · {r.unitOrArea}
+                      {r.neighborName} · {community?.name || 'Comunidad'} · {r.unitOrArea || 'Sin vivienda'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => applyRequestHousingToUser(r.id)}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-[#0A2E6D] text-white"
+                      title="Guardar este piso y número en la cuenta del vecino"
+                    >
+                      <Home className="w-3.5 h-3.5" />
+                      Asignar vivienda
+                    </button>
                     <select
                       value={r.status}
                       onChange={(e) => updateNeighborRequest(r.id, e.target.value as typeof r.status)}
@@ -185,7 +211,8 @@ export const SoferServicesModal: React.FC<SoferServicesModalProps> = ({ isOpen, 
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

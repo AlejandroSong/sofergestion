@@ -183,10 +183,13 @@ create table if not exists public.app_notifications (
   building_id text,
   building_name text,
   ticket_id text,
+  user_id text,
   created_at timestamptz default now(),
   is_read boolean default false,
   target_roles text[] not null default array['admin']::text[]
 );
+
+alter table public.app_notifications add column if not exists user_id text;
 
 alter table public.app_notifications enable row level security;
 

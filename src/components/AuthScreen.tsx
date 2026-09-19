@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Building2, AlertCircle, ShieldAlert } from 'lucide-react';
+import { AlertCircle, ShieldAlert } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 import { useApp } from '../context/AppContext';
 import { initGoogleButton } from '../lib/googleGis';
 import { googleClientId } from '../lib/googleAuth';
@@ -36,13 +37,10 @@ export const AuthScreen: React.FC = () => {
       <div className="absolute bottom-10 left-10 w-96 h-96 bg-[#B7D0EE]/20 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-xl z-10 space-y-6">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white border border-[#D5E4F5] text-[#3D6FA8] shadow-sm mb-1">
-            <Building2 className="w-8 h-8" />
+        <div className="text-center space-y-3">
+          <div className="flex justify-center">
+            <BrandLogo variant="hero" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-[#1E3A5F] flex items-center justify-center gap-2">
-            SOFER <span className="text-[#3D6FA8]">Gestión</span>
-          </h1>
           <p className="text-xs text-[#5E7A99] max-w-md mx-auto">
             Acceso con Google. El administrador asigna el rol después del primer ingreso.
           </p>

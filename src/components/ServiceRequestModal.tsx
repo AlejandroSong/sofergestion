@@ -41,7 +41,7 @@ export const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({
   const [preferredTimeSlot, setPreferredTimeSlot] = useState<'manana' | 'tarde'>('manana');
   const [notes, setNotes] = useState<string>('');
   const [phone, setPhone] = useState<string>(currentUser.phone || '');
-  const [unit, setUnit] = useState<string>(currentUser.unitOrArea || 'Planta 4ª Ático B');
+  const [unit, setUnit] = useState<string>(currentUser.unitOrArea || '');
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
 
   if (!isOpen || !service) return null;

@@ -30,26 +30,46 @@ interface ReportsModalProps {
 }
 
 export const ReportsModal: React.FC<ReportsModalProps> = ({ isOpen, onClose }) => {
-  const { buildings, tickets, transactions, currentUser, resetBuildingOperations, resetAllOperations, deleteTicket, deleteTransaction, deleteNeighborRequest, neighborRequests } = useApp();
+  const {
+    buildings,
+    tickets,
+    transactions,
+    currentUser,
+    allUsers,
+    resetBuildingOperations,
+    resetAllOperations,
+    deleteTicket,
+    deleteTransaction,
+    deleteNeighborRequest,
+    neighborRequests,
+  } = useApp();
 
   const [reportType, setReportType] = useState<'financial' | 'maintenance' | 'worker' | 'docs'>('financial');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
-  const [period, setPeriod] = useState<string>('2026-08');
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [copiedDocs, setCopiedDocs] = useState(false);
 
   if (!isOpen) return null;
 
+  const inPeriod = (iso?: string) => {
+    if (!period) return true;
+    return String(iso || '').slice(0, 7) === period;
+  };
+
   const targetBuilding = buildings.find((b) => b.id === selectedBuildingId);
   const buildingName = targetBuilding ? targetBuilding.name : 'Todos los Edificios';
+  const periodLabel = period
+    ? new Date(`${period}-01T12:00:00`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+    : 'Histórico';
 
   const relevantTransactions = transactions.filter((t) => {
     if (selectedBuildingId !== 'all' && t.buildingId !== selectedBuildingId) return false;
-    return true;
+    return inPeriod(t.date);
   });
 
   const relevantTickets = tickets.filter((t) => {
     if (selectedBuildingId !== 'all' && t.buildingId !== selectedBuildingId) return false;
-    return true;
+    return inPeriod(t.createdAt);
   });
 
   const totalIngresos = relevantTransactions
@@ -67,7 +87,7 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({ isOpen, onClose }) =
 INFORME OFICIAL DE GESTIÓN Y MANTENIMIENTO DE EDIFICIOS
 ===============================================================
 Alcance: ${buildingName}
-Período: ${period}
+Período: ${periodLabel}
 Fecha de Emisión: ${new Date().toLocaleDateString('es-ES')}
 Generado por: ${currentUser.name} (${currentUser.role.toUpperCase()})
 
@@ -98,7 +118,7 @@ ${relevantTickets
    - Estado: ${t.status.toUpperCase()} | Prioridad: ${t.priority.toUpperCase()}
    - Trabajador Asignado: ${t.assignedWorkerName || 'Sin asignar'}
    - Costo Mano de Obra: €${t.serviceCost || 0} | Materiales: €${t.materialsCost || 0} | Total: €${t.totalCharged || 0}
-   - Historial de Seguimiento: ${t.timeline.length} eventos registrados
+   - Historial de Seguimiento: ${(t.timeline || []).length} eventos registrados
 `
   )
   .join('\n')}
@@ -113,23 +133,52 @@ Documento auditado y generado automáticamente para Google Docs.
     setTimeout(() => setCopiedDocs(false), 3000);
   };
 
-  const handleDownloadPDF = () => {
-    if (targetBuilding) {
-      exportBuildingFinancialStatementPDF(
-        targetBuilding,
-        relevantTransactions,
-        relevantTickets,
-        period
-      );
-    } else {
-      // Export default or first building
-      exportBuildingFinancialStatementPDF(
-        buildings[0],
-        relevantTransactions,
-        relevantTickets,
-        `Consolidado ${period}`
-      );
+  const handleDownloadExcel = () => {
+    if (reportType === 'maintenance' || reportType === 'worker') {
+      exportTicketsToExcel(relevantTickets, buildingName);
+      return;
     }
+    exportAccountingToExcel(relevantTransactions, buildingName, periodLabel);
+  };
+
+  const handleDownloadPDF = () => {
+    if (reportType === 'worker') {
+      const worker =
+        allUsers.find((u) => u.role === 'worker') ||
+        (currentUser.role === 'worker' ? currentUser : undefined);
+      if (worker) {
+        exportWorkerExpenseReportPDF(worker, relevantTickets, relevantTransactions, periodLabel);
+        return;
+      }
+    }
+
+    const scopeBuilding = targetBuilding || {
+      ...(buildings[0] || {
+        id: 'all',
+        name: 'Todos los Edificios',
+        code: 'CONS',
+        address: '',
+        city: '',
+        totalUnits: buildings.reduce((a, b) => a + b.totalUnits, 0),
+        floors: 0,
+        presidentId: '',
+        presidentName: 'Administración',
+        presidentPhone: '',
+        presidentEmail: '',
+        image: '',
+        monthlyQuotaFee: 0,
+        repairFund: buildings.reduce((a, b) => a + (b.repairFund || 0), 0),
+        initialRepairFund: 0,
+        currency: '€',
+        emergencyContact: '',
+        bankAccount: '',
+        createdAt: new Date().toISOString().slice(0, 10),
+      }),
+      name: buildingName,
+      code: targetBuilding?.code || 'CONS',
+    };
+
+    exportBuildingFinancialStatementPDF(scopeBuilding, relevantTransactions, relevantTickets, periodLabel);
   };
 
   return (
@@ -229,25 +278,25 @@ Documento auditado y generado automáticamente para Google Docs.
                   type="button"
                   onClick={() => {
                     if (selectedBuildingId === 'all') {
-                      if (confirm('Esto pondrá a cero TODOS los balances, movimientos, incidencias y solicitudes. ¿Continuar?')) {
+                      if (confirm('Esto eliminará TODOS los balances generales, movimientos, cajas de reparación y saldos de cuota. Las incidencias no se borran. ¿Continuar?')) {
                         resetAllOperations();
                       }
                       return;
                     }
-                    if (confirm('¿Poner a cero balances e incidencias de este edificio?')) {
+                    if (confirm('¿Eliminar los balances de este edificio y empezar de 0? Las incidencias no se borran.')) {
                       resetBuildingOperations(selectedBuildingId);
                     }
                   }}
                   className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-white border border-red-200 text-red-700 cursor-pointer"
                 >
-                  Empezar de 0 {selectedBuildingId === 'all' ? '(todos)' : '(edificio)'}
+                  Borrar balances {selectedBuildingId === 'all' ? '(todos)' : '(edificio)'}
                 </button>
               </div>
               <div className="max-h-32 overflow-y-auto space-y-1">
-                {relevantTickets.slice(0, 8).map((t) => (
+                {relevantTickets.filter((t) => t.status === 'resuelta' || t.status === 'rechazada').slice(0, 8).map((t) => (
                   <div key={t.id} className="flex items-center justify-between text-[11px] bg-white rounded-lg px-2 py-1 border border-[#E2E8F0]">
                     <span className="truncate">{t.ticketNumber} · {t.title}</span>
-                    <button type="button" onClick={() => { if (confirm(`¿Eliminar ${t.ticketNumber}?`)) deleteTicket(t.id); }} className="text-red-600 p-1 cursor-pointer">
+                    <button type="button" onClick={() => { if (confirm(`¿Eliminar el reporte terminado ${t.ticketNumber}?`)) deleteTicket(t.id); }} className="text-red-600 p-1 cursor-pointer">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -319,20 +368,29 @@ Documento auditado y generado automáticamente para Google Docs.
             ) : (
               <div className="space-y-2">
                 <h4 className="text-xs font-bold text-[#16202E] uppercase tracking-wider">
-                  Muestra de Datos a Exportar ({relevantTransactions.length} Movimientos • {relevantTickets.length} Tickets)
+                  Muestra de {periodLabel} ({relevantTransactions.length} movimientos • {relevantTickets.length} incidencias)
                 </h4>
                 <div className="border border-[#E2E8F0] rounded-xl overflow-hidden text-xs">
                   <table className="w-full text-left text-[#16202E]">
                     <thead className="bg-[#161616] text-[#5A6B82] uppercase text-[10px] font-semibold border-b border-[#E2E8F0]">
                       <tr>
-                        <th className="py-2 px-3">Fecha</th>
+                        <th className="py-2 px-3">{reportType === 'maintenance' || reportType === 'worker' ? 'Ticket' : 'Fecha'}</th>
                         <th className="py-2 px-3">Edificio</th>
                         <th className="py-2 px-3">Concepto</th>
-                        <th className="py-2 px-3 text-right">Importe</th>
+                        <th className="py-2 px-3 text-right">{reportType === 'maintenance' || reportType === 'worker' ? 'Estado' : 'Importe'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#202020]">
-                      {relevantTransactions.slice(0, 5).map((tx) => (
+                      {reportType === 'maintenance' || reportType === 'worker'
+                        ? relevantTickets.slice(0, 8).map((t) => (
+                            <tr key={t.id} className="hover:bg-[#F4F6FA]">
+                              <td className="py-2 px-3 font-mono text-[#5A6B82]">{t.ticketNumber}</td>
+                              <td className="py-2 px-3 font-semibold text-[#16202E]">{t.buildingName}</td>
+                              <td className="py-2 px-3 text-[#5A6B82]">{t.title}</td>
+                              <td className="py-2 px-3 text-right font-bold">{t.status.replace('_', ' ')}</td>
+                            </tr>
+                          ))
+                        : relevantTransactions.slice(0, 8).map((tx) => (
                         <tr key={tx.id} className="hover:bg-[#F4F6FA]">
                           <td className="py-2 px-3 font-mono text-[#5A6B82]">{tx.date}</td>
                           <td className="py-2 px-3 font-semibold text-[#16202E]">{tx.buildingName}</td>
@@ -362,9 +420,7 @@ Documento auditado y generado automáticamente para Google Docs.
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() =>
-                  exportAccountingToExcel(relevantTransactions, buildingName, period)
-                }
+                onClick={handleDownloadExcel}
                 className="px-4 py-2 bg-green-600 hover:bg-green-500 text-[#0A0A0A] rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               >
                 <FileSpreadsheet className="w-4 h-4" />

@@ -43,6 +43,11 @@ export function profileToUser(row: ProfileRow): User {
     buildingName: row.building_name || undefined,
     specialty: row.specialty || undefined,
     unitOrArea: row.unit_or_area || undefined,
+    floor: (() => {
+      const raw = row.unit_or_area || '';
+      const match = raw.match(/piso\s*([^·•,\-]+)/i);
+      return match ? match[1].trim() : undefined;
+    })(),
     provider: row.provider || 'google',
     status: row.status || 'active',
     monthlyFee: row.monthly_fee ?? undefined,

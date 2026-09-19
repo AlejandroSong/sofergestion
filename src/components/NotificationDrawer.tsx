@@ -37,6 +37,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
   const {
     notifications,
     currentUser,
+    tickets,
+    buildings,
     markNotificationAsRead,
     markAllNotificationsAsRead,
     soundEnabled,
@@ -44,11 +46,14 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
     setSelectedTicketId,
     setSelectedBuildingId,
     unreadCount,
+    showToast,
+    setAdminInboxTarget,
   } = useApp();
 
   const userNotifications = notifications
     .filter((n) => isNotificationForUser(n, currentUser))
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 80);
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -67,15 +72,38 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
 
   const handleClickNotification = (n: (typeof notifications)[0]) => {
     markNotificationAsRead(n.id);
-    if (n.ticketId) {
-      setSelectedTicketId(n.ticketId);
+    if (n.requestId && currentUser.role === 'admin') {
+      setAdminInboxTarget({ type: 'sofer', requestId: n.requestId, userId: n.userId });
       onClose();
       return;
     }
-    if (n.buildingId && canOpenBuilding(currentUser, n.buildingId)) {
-      setSelectedBuildingId(n.buildingId);
+    if (n.userId && currentUser.role === 'admin') {
+      setAdminInboxTarget({ type: 'users', userId: n.userId });
       onClose();
+      return;
     }
+    const ticket = n.ticketId ? tickets.find((t) => t.id === n.ticketId) : undefined;
+    const buildingId = n.buildingId || ticket?.buildingId;
+    const building = buildingId ? buildings.find((b) => b.id === buildingId) : undefined;
+
+    if (ticket) {
+      setSelectedTicketId(ticket.id);
+      onClose();
+      return;
+    }
+
+    if (building && canOpenBuilding(currentUser, building.id)) {
+      setSelectedBuildingId(building.id);
+      onClose();
+      return;
+    }
+
+    showToast(
+      'Este aviso ya no está disponible',
+      'La incidencia o el edificio de este aviso no existen en tu sesión (puede haberse borrado o ser de una prueba anterior).',
+      'info'
+    );
+    onClose();
   };
 
   return (

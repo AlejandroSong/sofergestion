@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Building2,
   Bell,
   BarChart3,
   Layers,
@@ -17,6 +16,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { RoleSwitcher } from './RoleSwitcher';
 import { NotificationDrawer } from './NotificationDrawer';
+import { BrandLogo } from './BrandLogo';
 
 interface NavbarProps {
   onOpenReports: () => void;
@@ -41,24 +41,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
     <>
       <header className="sticky top-0 z-30 bg-[#0A2E6D] text-white border-b border-[#0A2E6D] shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-[4.5rem]">
             {/* Left: Brand & Title */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div
                 onClick={() => {
                   setSelectedBuildingId(null);
                   setActiveTab('dashboard');
                 }}
-                className="flex items-center gap-2.5 cursor-pointer group"
+                className="flex items-center gap-2.5 cursor-pointer group min-w-0"
               >
-                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-transform">
-                  <Building2 className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="font-bold text-white text-base sm:text-lg leading-tight tracking-tight flex items-center gap-2">
+                <BrandLogo variant="nav" />
+                <div className="min-w-0 hidden xs:block sm:block">
+                  <h1 className="font-bold text-white text-base sm:text-lg leading-tight tracking-tight">
                     SOFER Gestión
                   </h1>
-                  <p className="text-[11px] text-blue-200 hidden sm:block opacity-80">
+                  <p className="text-[11px] text-blue-200 hidden sm:block opacity-80 truncate">
                     Gestión Integral • Roles • Incidencias • Contabilidad
                   </p>
                 </div>
@@ -133,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
                 {currentUser.role === 'worker' ? 'Incidencias & Tareas' : currentUser.role === 'president' ? 'Incidencias de Mi Edificio' : 'Mis Incidencias'}
               </button>
 
-              {currentUser.role === 'president' && (
+              {(currentUser.role === 'president' || currentUser.role === 'neighbor') && (
                 <button
                   onClick={() => {
                     setSelectedBuildingId(null);
@@ -146,7 +144,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
                   }`}
                 >
                   <Home className="w-3.5 h-3.5" />
-                  Mi Vivienda & Pagos
+                  {currentUser.role === 'neighbor' ? 'Mi Vivienda' : 'Mi Vivienda & Pagos'}
                 </button>
               )}
 
@@ -210,7 +208,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
                   <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse shadow-xs">
-                    {unreadCount}
+                    {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
               </button>

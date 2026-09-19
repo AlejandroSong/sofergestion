@@ -30,7 +30,8 @@ import {
   Phone,
   ArrowRight,
   BadgePercent,
-  AlertCircle
+  AlertCircle,
+  Bell
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatIsoDateEs } from '../utils/dates';
@@ -40,6 +41,7 @@ import { CommonAreasManager } from './CommonAreasManager';
 import { InsuranceManager } from './InsuranceManager';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
 import { ServiceRequestModal } from './ServiceRequestModal';
+import { HousingPanel } from './HousingPanel';
 
 interface PresidentDashboardProps {
   onOpenCreateTicket: () => void;
@@ -61,7 +63,8 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
     neighborRequests,
     activeTab: globalActiveTab,
     setActiveTab: setGlobalActiveTab,
-    showToast
+    showToast,
+    notifyAdmin,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'vivienda' | 'sofer_services' | 'common_areas' | 'insurance'>('overview');
@@ -72,6 +75,8 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
   const [serviceSearchTerm, setServiceSearchTerm] = useState<string>('');
   const [selectedServiceForModal, setSelectedServiceForModal] = useState<NeighborService | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState<boolean>(false);
+  const [adminNoticeOpen, setAdminNoticeOpen] = useState(false);
+  const [adminNotice, setAdminNotice] = useState('');
 
   // Sync with navbar clicks
   useEffect(() => {
@@ -85,8 +90,7 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
 
   // Find the building assigned to this president
   const building =
-    buildings.find((b) => b.id === currentUser.buildingId || b.presidentId === currentUser.id) ||
-    buildings[0];
+    buildings.find((b) => b.id === currentUser.buildingId || b.presidentId === currentUser.id);
 
   const myTickets = tickets.filter((t) => t.buildingId === building?.id);
   const myTransactions = transactions.filter((t) => t.buildingId === building?.id);
@@ -152,6 +156,7 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
 
   const renderMiViviendaYPagos = () => (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <HousingPanel title="Mi vivienda en la comunidad" />
       {/* President Dwelling Banner */}
       <div className="bg-white border border-[#CBD5E1] rounded-3xl p-6 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E2E8F0]">
@@ -161,7 +166,7 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
               Titular: {currentUser.name} • Propietario Residente
             </div>
             <h2 className="text-2xl font-bold text-[#16202E]">
-              Vivienda: {currentUser.unitOrArea || 'Planta 4ª Ático B'}
+              Vivienda: {currentUser.unitOrArea || 'Sin piso ni número indicados'}
             </h2>
             <p className="text-xs text-[#5A6B82] mt-1">
               {building?.name} — Liquidación de cuotas, cuenta bancaria y justificantes oficiales
@@ -627,6 +632,14 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
               <Plus className="w-4 h-4" />
               Comunicar Avería
             </button>
+            <button
+              type="button"
+              onClick={() => setAdminNoticeOpen(true)}
+              className="px-4 py-3 bg-white hover:bg-[#E8EFF9] text-[#0A2E6D] border border-[#0A2E6D]/30 rounded-xl text-xs font-bold shadow-xs flex items-center gap-2 cursor-pointer"
+            >
+              <Bell className="w-4 h-4" />
+              Avisar al administrador
+            </button>
 
             {building && (
               <button
@@ -1038,17 +1051,62 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
       {/* ÁREAS COMUNES TAB */}
       {activeTab === 'common_areas' && (
         <div className="pt-2">
-          <CommonAreasManager 
-            building={building} 
-            onOpenCreateTicketForArea={onOpenCreateTicketForArea} 
-          />
+          {building ? (
+            <CommonAreasManager
+              building={building}
+              onOpenCreateTicketForArea={onOpenCreateTicketForArea}
+            />
+          ) : (
+            <HousingPanel title="Primero indica tu vivienda" />
+          )}
         </div>
       )}
 
-      {/* SEGUROS Y CONTRATOS TAB */}
       {activeTab === 'insurance' && (
         <div className="pt-2">
-          <InsuranceManager building={building} />
+          {building ? <InsuranceManager building={building} /> : <HousingPanel title="Primero indica tu vivienda" />}
+        </div>
+      )}
+
+      {adminNoticeOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              notifyAdmin(adminNotice);
+              setAdminNotice('');
+              setAdminNoticeOpen(false);
+            }}
+            className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3 border border-[#E2E8F0] shadow-2xl"
+          >
+            <h3 className="font-bold text-[#16202E] flex items-center gap-2">
+              <Bell className="w-4 h-4 text-[#0A2E6D]" />
+              Avisar al administrador
+            </h3>
+            <p className="text-xs text-[#5A6B82]">
+              Escríbele qué necesita tu comunidad. Le llega a la campana. Para una avería concreta usa también Comunicar Avería.
+            </p>
+            <textarea
+              required
+              value={adminNotice}
+              onChange={(e) => setAdminNotice(e.target.value)}
+              rows={4}
+              placeholder="Ej. Hay que revisar el ascensor el viernes, o necesitamos presupuesto de la azotea…"
+              className="w-full text-sm border border-[#E2E8F0] rounded-xl p-3 outline-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAdminNoticeOpen(false)}
+                className="px-3 py-2 text-xs font-semibold text-[#5A6B82] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="px-4 py-2 bg-[#0A2E6D] text-white rounded-xl text-xs font-bold cursor-pointer">
+                Enviar aviso
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
