@@ -80,7 +80,7 @@ export const HousingPanel: React.FC<{ title?: string }> = ({ title = 'Mi viviend
             <p className="sm:col-span-3 text-[11px] text-[#5A6B82] flex items-center gap-1">
               <Building2 className="w-3.5 h-3.5" />
               {selected.city ? `${selected.city} · ` : ''}
-              {selected.floors} plantas
+              {typeof selected.floors === 'number' ? `${selected.floors} plantas` : ''}
             </p>
           )}
           <label className="text-xs font-semibold text-[#5A6B82] space-y-1">

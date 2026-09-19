@@ -243,6 +243,14 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+function omitUndefined<T extends object>(obj: T): Partial<T> {
+  const next: Partial<T> = {};
+  (Object.keys(obj) as (keyof T)[]).forEach((key) => {
+    if (obj[key] !== undefined) next[key] = obj[key];
+  });
+  return next;
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load state from localStorage or initial defaults
   const [users, setUsers] = useState<User[]>(() => {
@@ -274,7 +282,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isDemoAccount(u)) {
       return ADMIN_USER;
     }
-    return u;
+    return {
+      ...u,
+      name: u.name || u.email?.split('@')[0] || 'Vecino',
+      email: u.email || '',
+      role: u.role || 'unassigned',
+      avatar: u.avatar || ADMIN_USER.avatar,
+      phone: u.phone || '+34 600 000 000',
+    };
   });
   const usersRef = useRef(users);
   usersRef.current = users;
@@ -341,12 +356,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (updates.floor !== undefined) housing.floor = updates.floor;
         if (updates.unitOrArea !== undefined) housing.unitOrArea = updates.unitOrArea;
       }
-      updates = {
+      updates = omitUndefined({
         phone: updates.phone,
         name: updates.name,
         avatar: updates.avatar,
         ...housing,
-      };
+      });
       if (canSetHousing && (housing.buildingId || housing.unitOrArea)) {
         publishNotification({
           id: crypto.randomUUID(),
@@ -362,7 +377,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    const newUsers = users.map((u) => (u.id === id || (target && u.email === target.email) ? { ...u, ...updates } : u));
+    const newUsers = users.map((u) =>
+      u.id === id || (target && u.email === target.email) ? { ...u, ...omitUndefined(updates) } : u
+    );
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
     const persisted = newUsers.find((u) => u.id === id) || newUsers.find((u) => target && u.email === target.email);

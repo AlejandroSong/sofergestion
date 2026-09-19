@@ -62,8 +62,12 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
     if (globalActiveTab === 'vivienda') setActiveTab('vivienda');
   }, [globalActiveTab]);
 
+  const money = (value: unknown, fallback = 0) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
   const building = buildings.find(b => b.id === currentUser.buildingId);
-  const balance = currentUser.feeBalance ?? 0;
+  const balance = money(currentUser.feeBalance);
   
   const myTickets = tickets.filter(t => 
     t.createdBy?.id === currentUser.id || 
@@ -99,26 +103,33 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
   // Filtered SOFER services
   const availableServices = neighborServices.filter(s => s.available);
   const filteredServices = availableServices.filter(s => {
-    const matchesCat = selectedCategory === 'todos' || s.category.toLowerCase().includes(selectedCategory.toLowerCase());
+    const category = (s.category || '').toLowerCase();
+    const matchesCat = selectedCategory === 'todos' || category.includes(selectedCategory.toLowerCase());
     const matchesSearch = !searchTerm || 
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      s.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.category.toLowerCase().includes(searchTerm.toLowerCase());
+      (s.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (s.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      category.includes(searchTerm.toLowerCase());
     return matchesCat && matchesSearch;
   });
 
   const categoryCounts = {
     todos: availableServices.length,
-    mantenimiento: availableServices.filter(s => s.category.toLowerCase().includes('mantenimiento') || s.category.toLowerCase().includes('técnico')).length,
-    limpieza: availableServices.filter(s => s.category.toLowerCase().includes('limpieza')).length,
-    gestoria: availableServices.filter(s => s.category.toLowerCase().includes('gestoría') || s.category.toLowerCase().includes('fiscal') || s.category.toLowerCase().includes('certificados')).length,
+    mantenimiento: availableServices.filter(s => {
+      const category = (s.category || '').toLowerCase();
+      return category.includes('mantenimiento') || category.includes('técnico');
+    }).length,
+    limpieza: availableServices.filter(s => (s.category || '').toLowerCase().includes('limpieza')).length,
+    gestoria: availableServices.filter(s => {
+      const category = (s.category || '').toLowerCase();
+      return category.includes('gestoría') || category.includes('fiscal') || category.includes('certificados');
+    }).length,
   };
 
   const renderCuentas = () => {
-    const cuota = currentUser.monthlyFee ?? building.monthlyQuotaFee ?? 85;
+    const cuota = money(currentUser.monthlyFee ?? building.monthlyQuotaFee, 85);
     const frequency = currentUser.feeFrequency ?? 'mensual';
-    const balance = currentUser.feeBalance ?? 0;
-    const lastPayment = currentUser.lastPaymentAmount ?? cuota;
+    const balance = money(currentUser.feeBalance);
+    const lastPayment = money(currentUser.lastPaymentAmount, cuota);
     const lastDate = formatIsoDateEs(currentUser.lastPaymentDate);
     const nextDue = formatIsoDateEs(currentUser.nextDueDate);
 
@@ -359,7 +370,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
             { month: 'Abril 2026', date: '05/04/2026' },
             { month: 'Marzo 2026', date: '05/03/2026' },
           ].map((rec, i) => {
-            const cuota = currentUser.monthlyFee ?? 85;
+            const cuota = money(currentUser.monthlyFee, 85);
             return (
               <div 
                 key={i} 
@@ -484,7 +495,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
 
                 <div className="text-right shrink-0">
                   <span className="text-xs text-[#5A6B82] block">Tarifa acordada</span>
-                  <span className="font-extrabold text-lg text-[#0A2E6D]">{r.price.toFixed(2)} €</span>
+                  <span className="font-extrabold text-lg text-[#0A2E6D]">{money(r.price).toFixed(2)} €</span>
                 </div>
               </div>
             ))}
@@ -595,7 +606,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
                 <div>
                   <span className="text-[10px] text-[#5A6B82] uppercase font-bold block">Tarifa vecinal</span>
                   <span className="text-xl font-extrabold text-[#16202E]">
-                    {service.price.toFixed(2)} €
+                    {money(service.price).toFixed(2)} €
                   </span>
                 </div>
                 <button
@@ -650,7 +661,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
             {building.name}
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#16202E] tracking-tight">
-            Hola, {currentUser.name.split(' ')[0]}
+            Hola, {(currentUser.name || currentUser.email || 'Vecino').split(' ')[0]}
           </h1>
           <p className="text-[#5A6B82] text-xs sm:text-sm mt-0.5 flex items-center gap-2">
             <Home className="w-4 h-4 text-[#0A2E6D]" />
