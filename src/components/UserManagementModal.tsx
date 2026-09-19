@@ -32,6 +32,7 @@ import { Role, User } from '../types';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
 import { fetchRevokedEmails } from '../lib/profiles';
 import { formatCurrency } from '../utils/exportUtils';
+import { matchesQuery } from '../utils/safe';
 import { composeHousing, parseHousing } from '../utils/housing';
 
 interface UserManagementModalProps {
@@ -250,12 +251,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
       if (neighborDebtFilter === 'non_debtor' && b < 0) return false;
     }
 
-    const matchesSearch =
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (u.buildingName && u.buildingName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (u.specialty && u.specialty.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (u.unitOrArea && u.unitOrArea.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = matchesQuery(searchQuery, u.name, u.email, u.buildingName, u.specialty, u.unitOrArea);
     return matchesRole && matchesSearch;
   });
 

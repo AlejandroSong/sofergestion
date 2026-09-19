@@ -26,6 +26,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { Building as BuildingType, FloorUtilityBill, UtilityServiceType } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
+import { matchesQuery } from '../utils/safe';
 
 interface FloorUtilityBillsManagerProps {
   building: BuildingType;
@@ -242,11 +243,7 @@ export const FloorUtilityBillsManager: React.FC<FloorUtilityBillsManagerProps> =
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
-        b.companyName.toLowerCase().includes(q) ||
-        b.contractNumber.toLowerCase().includes(q) ||
-        b.floor.toLowerCase().includes(q) ||
-        b.serviceType.toLowerCase().includes(q) ||
-        (b.notes && b.notes.toLowerCase().includes(q))
+        matchesQuery(q, b.companyName, b.contractNumber, b.floor, b.serviceType, b.notes)
       );
     }
     return true;

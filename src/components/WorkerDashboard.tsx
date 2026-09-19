@@ -26,6 +26,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { matchesQuery } from '../utils/safe';
 import {
   exportWorkerExpenseReportPDF,
   exportTicketsToExcel,
@@ -315,10 +316,7 @@ export const WorkerDashboard: React.FC = () => {
                   if (!neighborSearch) return true;
                   const q = neighborSearch.toLowerCase();
                   return (
-                    n.name.toLowerCase().includes(q) ||
-                    (n.buildingName?.toLowerCase() || '').includes(q) ||
-                    (n.unitOrArea?.toLowerCase() || '').includes(q) ||
-                    n.email.toLowerCase().includes(q)
+                    matchesQuery(q, n.name, n.buildingName, n.unitOrArea, n.email)
                   );
                 }).length;
                 return (
@@ -341,10 +339,7 @@ export const WorkerDashboard: React.FC = () => {
                   if (!neighborSearch) return true;
                   const q = neighborSearch.toLowerCase();
                   return (
-                    n.name.toLowerCase().includes(q) ||
-                    (n.buildingName?.toLowerCase() || '').includes(q) ||
-                    (n.unitOrArea?.toLowerCase() || '').includes(q) ||
-                    n.email.toLowerCase().includes(q)
+                    matchesQuery(q, n.name, n.buildingName, n.unitOrArea, n.email)
                   );
                 });
 

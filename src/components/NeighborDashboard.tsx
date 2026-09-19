@@ -28,6 +28,7 @@ import { NeighborAccountEditModal } from './NeighborAccountEditModal';
 import { ServiceRequestModal } from './ServiceRequestModal';
 import { exportNeighborReceiptPDF } from '../utils/exportUtils';
 import { formatIsoDateEs } from '../utils/dates';
+import { statusLabel } from '../utils/safe';
 import { NeighborService } from '../types';
 
 interface NeighborDashboardProps {
@@ -322,7 +323,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
                       t.status === 'en_proceso' ? 'bg-[#B76E00]/10 text-[#B76E00]' :
                       'bg-[#C0392B]/10 text-[#C0392B]'
                     }`}>
-                      {t.status.replace('_', ' ')}
+                      {statusLabel(t.status)}
                     </span>
                     <span className="text-xs text-[#5A6B82] bg-white px-2 py-0.5 rounded border border-[#E2E8F0]">
                       {t.unitOrArea}
@@ -464,7 +465,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
                       r.status === 'cancelado' ? 'bg-red-100 text-red-700' :
                       'bg-blue-100 text-blue-700'
                     }`}>
-                      {r.status === 'pendiente' ? 'Pendiente de confirmación' : r.status.replace('_', ' ')}
+                      {r.status === 'pendiente' ? 'Pendiente de confirmación' : statusLabel(r.status)}
                     </span>
                   </div>
 

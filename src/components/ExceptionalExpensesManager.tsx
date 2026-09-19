@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Building, ExceptionalExpense } from '../types';
 import { useApp } from '../context/AppContext';
 import { AlertCircle, Plus, CheckCircle2, Trash2, Calendar, FileText, Info } from 'lucide-react';
+import { asMoney } from '../utils/safe';
 
 interface ExceptionalExpensesManagerProps {
   building: Building;
@@ -99,7 +100,7 @@ export const ExceptionalExpensesManager: React.FC<ExceptionalExpensesManagerProp
                     <p className="text-xs text-[#5A6B82] mt-0.5">{expense.reason}</p>
                   </td>
                   <td className="px-4 py-3 font-mono font-medium align-top">
-                    {expense.amount.toFixed(2)}
+                    {asMoney(expense.amount).toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-xs text-[#5A6B82] align-top whitespace-nowrap">
                     {expense.dateIncurred}

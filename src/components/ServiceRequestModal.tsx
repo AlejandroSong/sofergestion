@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { NeighborService, User } from '../types';
+import { asMoney } from '../utils/safe';
 
 interface ServiceRequestModalProps {
   isOpen: boolean;
@@ -128,7 +129,7 @@ export const ServiceRequestModal: React.FC<ServiceRequestModalProps> = ({
               <div className="text-right shrink-0">
                 <span className="text-xs text-[#5A6B82] block">Tarifa acordada</span>
                 <span className="text-xl font-extrabold text-[#0A2E6D]">
-                  {service.price.toFixed(2)} €
+                  {asMoney(service.price).toFixed(2)} €
                 </span>
               </div>
             </div>

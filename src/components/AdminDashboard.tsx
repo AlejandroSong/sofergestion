@@ -35,6 +35,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { exportAccountingToExcel, exportBuildingsPortfolioToExcel, exportTicketsToExcel, formatCurrency } from '../utils/exportUtils';
 import { collectWorkerRoster, countResolvedJobs } from '../utils/workers';
+import { initials } from '../utils/safe';
 import { canDeleteFinishedTicket } from '../utils/permissions';
 import { Building, Ticket } from '../types';
 import { WorkerPayoutModal } from './WorkerPayoutModal';
@@ -815,7 +816,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <img src={worker.avatar} alt={worker.name} className="w-10 h-10 rounded-full bg-[#F4F6FA] border border-[#E2E8F0] shrink-0 object-cover" referrerPolicy="no-referrer" />
                   ) : (
                     <div className="w-10 h-10 rounded-full bg-green-50 border border-green-200 text-green-700 font-bold text-xs flex items-center justify-center shrink-0">
-                      {worker.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      {initials(worker.name)}
                     </div>
                   )}
                   <div className="min-w-0 flex-1">

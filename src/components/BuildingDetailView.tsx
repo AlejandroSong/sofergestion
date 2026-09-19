@@ -37,6 +37,7 @@ import {
 } from '../utils/exportUtils';
 import { TicketStatus } from '../types';
 import { currentPeriodLabel } from '../utils/dates';
+import { asMoney, matchesQuery, statusLabel } from '../utils/safe';
 import { AdjustRepairFundModal } from './AdjustRepairFundModal';
 import { CommonAreasManager } from './CommonAreasManager';
 import { FloorUtilityBillsManager } from './FloorUtilityBillsManager';
@@ -107,14 +108,14 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
   // Financial math
   const totalIngresos = buildingTransactions
     .filter((t) => t.type === 'ingreso')
-    .reduce((acc, curr) => acc + curr.amount, 0);
+    .reduce((acc, curr) => acc + asMoney(curr.amount), 0);
 
   const totalGastos = buildingTransactions
     .filter((t) => t.type === 'gasto')
-    .reduce((acc, curr) => acc + curr.amount, 0);
+    .reduce((acc, curr) => acc + asMoney(curr.amount), 0);
 
   const balance = totalIngresos - totalGastos;
-  const potentialMonthlyIncome = building.totalUnits * building.monthlyQuotaFee;
+  const potentialMonthlyIncome = asMoney(building.totalUnits) * asMoney(building.monthlyQuotaFee);
 
   // Filtered transactions
   const filteredTransactions = buildingTransactions.filter((tx) => {
@@ -122,9 +123,7 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
-        tx.description.toLowerCase().includes(q) ||
-        tx.code.toLowerCase().includes(q) ||
-        tx.category.toLowerCase().includes(q)
+        matchesQuery(q, tx.description, tx.code, tx.category)
       );
     }
     return true;
@@ -136,9 +135,7 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
-        t.title.toLowerCase().includes(q) ||
-        t.ticketNumber.toLowerCase().includes(q) ||
-        t.unitOrArea.toLowerCase().includes(q)
+        matchesQuery(q, t.title, t.ticketNumber, t.unitOrArea)
       );
     }
     return true;
@@ -711,7 +708,7 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
                               : 'bg-[#E8EFF9] text-[#5A6B82] border border-[#E2E8F0]'
                           }`}
                         >
-                          {tkt.status.replace('_', ' ')}
+                          {statusLabel(tkt.status)}
                         </span>
                       </div>
 

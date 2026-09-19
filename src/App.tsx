@@ -152,10 +152,8 @@ const MainAppContent: React.FC = () => {
               setIsCreateTicketOpen(true);
             }}
           />
-        ) : currentUser.role === 'neighbor' ? (
-          <NeighborDashboard onOpenCreateTicket={() => setIsCreateTicketOpen(true)} />
         ) : (
-          <div />
+          <NeighborDashboard onOpenCreateTicket={() => setIsCreateTicketOpen(true)} />
         )}
       </main>
 

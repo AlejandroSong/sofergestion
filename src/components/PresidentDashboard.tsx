@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatIsoDateEs } from '../utils/dates';
+import { matchesQuery, statusLabel } from '../utils/safe';
 import { exportBuildingFinancialStatementPDF, exportTicketsToExcel, exportNeighborReceiptPDF, formatCurrency } from '../utils/exportUtils';
 import { TicketStatus, NeighborService } from '../types';
 import { CommonAreasManager } from './CommonAreasManager';
@@ -107,10 +108,7 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
-        t.title.toLowerCase().includes(q) ||
-        t.ticketNumber.toLowerCase().includes(q) ||
-        t.unitOrArea.toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q)
+        matchesQuery(q, t.title, t.ticketNumber, t.unitOrArea, t.description)
       );
     }
     return true;
@@ -131,10 +129,8 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
   // Services available & filtering
   const availableServices = neighborServices.filter(s => s.available);
   const filteredServices = availableServices.filter(s => {
-    const matchesCat = serviceCategoryFilter === 'todos' || s.category.toLowerCase().includes(serviceCategoryFilter.toLowerCase());
-    const matchesSearch = !serviceSearchTerm || 
-      s.name.toLowerCase().includes(serviceSearchTerm.toLowerCase()) || 
-      s.description.toLowerCase().includes(serviceSearchTerm.toLowerCase());
+    const matchesCat = serviceCategoryFilter === 'todos' || matchesQuery(serviceCategoryFilter, s.category);
+    const matchesSearch = matchesQuery(serviceSearchTerm, s.name, s.description);
     return matchesCat && matchesSearch;
   });
 
@@ -385,7 +381,7 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
                       r.status === 'cancelado' ? 'bg-red-100 text-red-700' :
                       'bg-blue-100 text-blue-700'
                     }`}>
-                      {r.status === 'pendiente' ? 'Pendiente de confirmación' : r.status.replace('_', ' ')}
+                      {r.status === 'pendiente' ? 'Pendiente de confirmación' : statusLabel(r.status)}
                     </span>
                   </div>
 
@@ -579,7 +575,7 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
                         req.status === 'en_proceso' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-blue-100 text-blue-700'
                       }`}>
-                        {req.status.replace('_', ' ')}
+                        {statusLabel(req.status)}
                       </span>
                     </td>
                   </tr>
@@ -941,7 +937,7 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
                               : 'bg-red-100 text-red-700'
                           }`}
                         >
-                          {t.status.replace('_', ' ')}
+                          {statusLabel(t.status)}
                         </span>
                         <span className="text-xs text-[#5A6B82] bg-slate-100 px-2 py-0.5 rounded">
                           {t.unitOrArea}

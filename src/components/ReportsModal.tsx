@@ -23,6 +23,7 @@ import {
   exportWorkerExpenseReportPDF,
   formatCurrency,
 } from '../utils/exportUtils';
+import { statusLabel } from '../utils/safe';
 
 interface ReportsModalProps {
   isOpen: boolean;
@@ -387,7 +388,7 @@ Documento auditado y generado automáticamente para Google Docs.
                               <td className="py-2 px-3 font-mono text-[#5A6B82]">{t.ticketNumber}</td>
                               <td className="py-2 px-3 font-semibold text-[#16202E]">{t.buildingName}</td>
                               <td className="py-2 px-3 text-[#5A6B82]">{t.title}</td>
-                              <td className="py-2 px-3 text-right font-bold">{t.status.replace('_', ' ')}</td>
+                              <td className="py-2 px-3 text-right font-bold">{statusLabel(t.status)}</td>
                             </tr>
                           ))
                         : relevantTransactions.slice(0, 8).map((tx) => (

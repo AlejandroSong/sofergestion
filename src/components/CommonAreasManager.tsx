@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Building, CommonArea } from '../types';
+import { matchesQuery } from '../utils/safe';
 
 interface CommonAreasManagerProps {
   building: Building;
@@ -174,9 +175,7 @@ export const CommonAreasManager: React.FC<CommonAreasManagerProps> = ({
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
-        area.name.toLowerCase().includes(q) ||
-        area.locationFloor.toLowerCase().includes(q) ||
-        (area.description && area.description.toLowerCase().includes(q))
+        matchesQuery(q, area.name, area.locationFloor, area.description)
       );
     }
     return true;

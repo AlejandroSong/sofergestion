@@ -48,8 +48,17 @@ export const isLastActiveAdmin = (user: User, allUsers: User[]) => {
   return admins.length <= 1;
 };
 
+export const sanitizeUser = (user: User): User => ({
+  ...user,
+  name: user.name || (user.email || '').split('@')[0] || 'Usuario',
+  email: user.email || '',
+  role: user.role || 'unassigned',
+  avatar: user.avatar || ADMIN_USER.avatar,
+  phone: user.phone || '+34 600 000 000',
+});
+
 export const withSingleAdmin = (loaded: User[]): User[] => {
-  const others = loaded.filter((u) => !isDemoAccount(u));
+  const others = loaded.filter((u) => !isDemoAccount(u)).map(sanitizeUser);
   if (!others.length) return [ADMIN_USER];
   const hasAdmin = others.some((u) => u.role === 'admin' && u.status !== 'suspended');
   if (hasAdmin) return others;
