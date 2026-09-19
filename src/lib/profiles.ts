@@ -72,10 +72,19 @@ function corePayload(user: User, authUserId: string) {
   };
 }
 
+export async function ensureSelfAdmin() {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('ensure_self_admin');
+  if (error) {
+    console.warn('No se pudo confirmar el administrador:', error.message);
+  }
+}
+
 export async function upsertProfile(user: User, authUserId: string): Promise<{ created: boolean }> {
   if (!supabase || !isUuid(authUserId)) return { created: false };
 
   const isAdmin = user.email.trim().toLowerCase() === ADMIN_USER.email.toLowerCase();
+  await ensureSelfAdmin();
   const { data: existing } = await supabase
     .from('profiles')
     .select('id, role')
@@ -85,13 +94,13 @@ export async function upsertProfile(user: User, authUserId: string): Promise<{ c
   if (!existing) {
     const { error } = await supabase.from('profiles').insert({
       ...corePayload(user, authUserId),
-      role: isAdmin ? 'admin' : 'unassigned',
+      role: isAdmin ? 'admin' : user.role && user.role !== 'unassigned' ? user.role : 'unassigned',
     });
     if (error && error.code !== '23505') {
       console.warn('No se pudo crear el perfil:', error.message);
       return { created: false };
     }
-    return { created: !isAdmin };
+    return { created: !isAdmin && (!user.role || user.role === 'unassigned') };
   }
 
   const { error } = await supabase
@@ -122,6 +131,7 @@ export async function persistProfile(user: User, authUserId?: string): Promise<{
   if (!supabase) return { ok: true };
   const email = user.email.trim().toLowerCase();
 
+  await ensureSelfAdmin();
   const { error: rpcError } = await supabase.rpc('assign_profile_role', {
     target_email: email,
     new_role: user.role,
@@ -165,21 +175,26 @@ export async function persistProfile(user: User, authUserId?: string): Promise<{
     }
   }
   if (!isUuid(id)) {
+    if (!rpcError) return { ok: true };
     return {
       ok: false,
-      message: rpcError?.message || 'No se encontró el perfil de este usuario en Supabase.',
+      message: rpcError.message || 'No se encontró el perfil de este usuario en Supabase.',
     };
   }
 
   const { error, data } = await supabase.from('profiles').update(patch).eq('id', id).select('id');
+  if (!rpcError) {
+    if (error) console.warn('Perfil extra no se pudo completar:', error.message);
+    return { ok: true };
+  }
   if (error) {
     console.warn('No se pudo guardar el perfil:', error.message);
-    return { ok: false, message: error.message };
+    return { ok: false, message: rpcError.message || error.message };
   }
   if (!data?.length) {
     return {
       ok: false,
-      message: rpcError?.message || 'No hay permiso para guardar la cuenta. Vuelve a ejecutar supabase/profiles.sql.',
+      message: rpcError.message || 'No hay permiso para guardar la cuenta. Vuelve a ejecutar supabase/profiles.sql.',
     };
   }
   return { ok: true };
@@ -215,6 +230,78 @@ export async function isEmailRevoked(email: string): Promise<boolean> {
   return Boolean(data);
 }
 
+export type RoleDirectoryEntry = {
+  email: string;
+  role: User['role'];
+  name?: string;
+  buildingId?: string;
+  buildingName?: string;
+  specialty?: string;
+  unitOrArea?: string;
+  floor?: string;
+  status?: User['status'];
+};
+
+export function toRoleDirectory(users: User[]): RoleDirectoryEntry[] {
+  return users.map((u) => ({
+    email: u.email.trim().toLowerCase(),
+    role: u.role,
+    name: u.name,
+    buildingId: u.buildingId,
+    buildingName: u.buildingName,
+    specialty: u.specialty,
+    unitOrArea: u.unitOrArea,
+    floor: u.floor,
+    status: u.status,
+  }));
+}
+
+function assignedRole(role?: User['role']) {
+  return role && role !== 'unassigned' ? role : undefined;
+}
+
+export function applyRoleDirectory(users: User[], directory: RoleDirectoryEntry[]): User[] {
+  const dir = new Map(
+    directory
+      .filter((row) => row.email)
+      .map((row) => [row.email.trim().toLowerCase(), row] as const)
+  );
+  const next = users.map((user) => {
+    const entry = dir.get(user.email.trim().toLowerCase());
+    if (!entry) return user;
+    return {
+      ...user,
+      role: entry.role,
+      name: entry.name || user.name,
+      buildingId: entry.buildingId ?? user.buildingId,
+      buildingName: entry.buildingName ?? user.buildingName,
+      specialty: entry.specialty ?? user.specialty,
+      unitOrArea: entry.unitOrArea ?? user.unitOrArea,
+      floor: entry.floor ?? user.floor,
+      status: entry.status ?? user.status,
+    };
+  });
+  for (const entry of dir.values()) {
+    if (next.some((u) => u.email.trim().toLowerCase() === entry.email)) continue;
+    next.push({
+      id: `dir-${entry.email}`,
+      name: entry.name || entry.email.split('@')[0],
+      email: entry.email,
+      role: entry.role || 'unassigned',
+      avatar: ADMIN_USER.avatar,
+      phone: '+34 600 000 000',
+      buildingId: entry.buildingId,
+      buildingName: entry.buildingName,
+      specialty: entry.specialty,
+      unitOrArea: entry.unitOrArea,
+      floor: entry.floor,
+      provider: 'google',
+      status: entry.status || 'active',
+    });
+  }
+  return next;
+}
+
 export function mergeUsersByEmail(local: User[], remote: User[]): User[] {
   const map = new Map<string, User>();
   for (const user of local) {
@@ -223,7 +310,21 @@ export function mergeUsersByEmail(local: User[], remote: User[]): User[] {
   for (const user of remote) {
     const key = user.email.trim().toLowerCase();
     const prev = map.get(key);
-    map.set(key, prev ? { ...prev, ...user } : user);
+    if (!prev) {
+      map.set(key, user);
+      continue;
+    }
+    const role = assignedRole(user.role) || assignedRole(prev.role) || user.role || prev.role;
+    map.set(key, {
+      ...prev,
+      ...user,
+      role,
+      buildingId: user.buildingId ?? prev.buildingId,
+      buildingName: user.buildingName ?? prev.buildingName,
+      specialty: user.specialty ?? prev.specialty,
+      unitOrArea: user.unitOrArea ?? prev.unitOrArea,
+      floor: user.floor ?? prev.floor,
+    });
   }
   return [...map.values()];
 }

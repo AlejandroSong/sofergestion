@@ -129,7 +129,9 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
   };
 
   const assignedKey = (email: string, role: Role) => {
-    const custom = customRoles.find((r) => r.memberEmails.includes(email.trim().toLowerCase()));
+    const custom = customRoles.find(
+      (r) => r.memberEmails.includes(email.trim().toLowerCase()) && r.baseRole === role
+    );
     return custom ? `c:${custom.id}` : `s:${role}`;
   };
 
@@ -386,9 +388,61 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
               </div>
             </div>
             <div>
-              <p className="text-[11px] font-bold text-[#0A2E6D] mb-1.5">Asignar rol a cada persona</p>
+              <p className="text-[11px] font-bold text-[#0A2E6D] mb-1.5">Pendientes de rol</p>
+              <div className="max-h-36 overflow-y-auto space-y-1.5">
+                {allUsers.filter((u) => u.role === 'unassigned').length === 0 && (
+                  <p className="text-[11px] text-[#5A6B82]">No hay nadie esperando asignación.</p>
+                )}
+                {allUsers
+                  .filter((u) => u.role === 'unassigned')
+                  .map((u) => (
+                    <div key={u.id} className="grid sm:grid-cols-[1fr_1fr_1fr] gap-2 items-center text-xs bg-amber-50 border border-amber-200 rounded-xl px-2 py-1.5">
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate text-[#16202E]">{u.name}</p>
+                        <p className="truncate text-[#5A6B82]">{u.email}</p>
+                      </div>
+                      <select
+                        value={assignedKey(u.email, u.role)}
+                        onChange={(e) => applyRole(u.id, e.target.value, u.buildingId, u.specialty, u.monthlyFee, u.unitOrArea, u.floor)}
+                        className="px-2 py-1 border border-[#E2E8F0] rounded-lg bg-white"
+                      >
+                        {SYSTEM_ROLES.map((r) => (
+                          <option key={r.id} value={`s:${r.id}`}>
+                            {r.label}
+                          </option>
+                        ))}
+                        {customRoles.map((r) => (
+                          <option key={r.id} value={`c:${r.id}`}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={u.buildingId || ''}
+                        onChange={(e) => {
+                          const b = buildings.find((x) => x.id === e.target.value);
+                          showToast('Cambia el rol primero', 'Asigna vecino o presidente para ligar una finca.', 'info');
+                          void b;
+                        }}
+                        className="px-2 py-1 border border-[#E2E8F0] rounded-lg bg-white"
+                      >
+                        <option value="">Sin finca</option>
+                        {buildings.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-[#0A2E6D] mb-1.5">Con rol asignado</p>
               <div className="max-h-52 overflow-y-auto space-y-1.5">
-                {allUsers.map((u) => (
+                {allUsers
+                  .filter((u) => u.role !== 'unassigned')
+                  .map((u) => (
                   <div key={u.id} className="grid sm:grid-cols-[1fr_1fr_1fr] gap-2 items-center text-xs bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-2 py-1.5">
                     <div className="min-w-0">
                       <p className="font-semibold truncate text-[#16202E]">{u.name}</p>

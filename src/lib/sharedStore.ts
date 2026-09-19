@@ -7,7 +7,8 @@ export type SharedKey =
   | 'worker_payouts'
   | 'neighbor_services'
   | 'neighbor_requests'
-  | 'custom_roles';
+  | 'custom_roles'
+  | 'role_directory';
 
 export const SHARED_KEYS: SharedKey[] = [
   'buildings',
@@ -17,6 +18,7 @@ export const SHARED_KEYS: SharedKey[] = [
   'neighbor_services',
   'neighbor_requests',
   'custom_roles',
+  'role_directory',
 ];
 
 export function stableJson(value: unknown) {

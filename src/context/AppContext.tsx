@@ -14,7 +14,7 @@ import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, is
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
 import { fetchSharedMap, saveShared, subscribeShared, stableJson, SHARED_KEYS, type SharedKey } from '../lib/sharedStore';
-import { clearRevocation, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, upsertProfile } from '../lib/profiles';
+import { applyRoleDirectory, clearRevocation, ensureSelfAdmin, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, toRoleDirectory, upsertProfile, type RoleDirectoryEntry } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
 import { parseHousing } from '../utils/housing';
@@ -276,6 +276,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return u;
   });
+  const usersRef = useRef(users);
+  usersRef.current = users;
+  const roleDirectoryRef = useRef<RoleDirectoryEntry[]>([]);
+  const withDirectory = (list: User[]) =>
+    withSingleAdmin(applyRoleDirectory(list, roleDirectoryRef.current));
 
   // Drop leftover demo accounts without forcing David back as admin
   useEffect(() => {
@@ -460,6 +465,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
+    roleDirectoryRef.current = toRoleDirectory(newUsers);
+    void saveShared('role_directory', roleDirectoryRef.current);
 
     const persisted = newUsers.find((u) => u.id === id);
     const assignedEmail = (persisted || targetUser)?.email.trim().toLowerCase();
@@ -514,11 +521,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       void persistProfile(persisted).then((result) => {
         if (!result.ok) {
           showToast(
-            'El rol no se guardó',
-            result.message || 'El cambio se revirtió porque no se pudo escribir en el servidor.',
-            'alert'
+            'Rol actualizado en el panel',
+            'La asignación ya vale para entrar. Si el perfil de Supabase no se guardó, ejecuta supabase/profiles.sql.',
+            'info'
           );
-          void refreshDirectory();
           return;
         }
         showToast('Rol Actualizado', `${persisted.name} ahora es ${persisted.role}.`, 'success');
@@ -723,7 +729,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     silent = false
   ): { success: boolean; message?: string } => {
     const cleanEmail = googleData.email.trim().toLowerCase();
-    const existing = users.find(u => u.email.trim().toLowerCase() === cleanEmail);
+    const latestUsers = usersRef.current;
+    const existing = latestUsers.find(u => u.email.trim().toLowerCase() === cleanEmail);
 
     if (existing) {
       if (existing.status === 'suspended') {
@@ -740,9 +747,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         name: googleData.name || existing.name,
         avatar: googleData.avatar || existing.avatar,
         provider: googleData.provider || existing.provider || 'google',
+        role: googleData.role || existing.role,
+        buildingId: googleData.buildingId ?? existing.buildingId,
+        specialty: googleData.specialty || existing.specialty,
       };
-      if (nextId !== existing.id) {
-        const synced = users.map((u) => (u.id === existing.id ? nextUser : u));
+      if (nextId !== existing.id || nextUser.role !== existing.role) {
+        const synced = latestUsers.map((u) => (u.id === existing.id ? nextUser : u));
         setUsers(synced);
         localStorage.setItem('gest_v2_users', JSON.stringify(synced));
       }
@@ -762,7 +772,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       assignedBuildingName = b?.name;
     }
 
-    const hasActiveAdmin = users.some((u) => u.role === 'admin' && u.status !== 'suspended');
+    const hasActiveAdmin = latestUsers.some((u) => u.role === 'admin' && u.status !== 'suspended');
     const bootstrapAdmin = !hasActiveAdmin && cleanEmail === ADMIN_USER.email.toLowerCase();
     const newUser: User = {
       id: googleData.id && /^[0-9a-f-]{36}$/i.test(googleData.id) ? googleData.id : `user-google-${Date.now()}`,
@@ -778,7 +788,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'active',
     };
 
-    const newUsers = [...users.filter((u) => u.email.trim().toLowerCase() !== cleanEmail), newUser];
+    const newUsers = [...latestUsers.filter((u) => u.email.trim().toLowerCase() !== cleanEmail), newUser];
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
     setCurrentUser(newUser);
@@ -1044,6 +1054,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const customRolesRef = useRef(customRoles);
   customRolesRef.current = customRoles;
 
+
   const applySharedPayload = (key: SharedKey, payload: unknown[]) => {
     const json = stableJson(payload);
     if (lastSharedJsonRef.current[key] === json) return;
@@ -1075,6 +1086,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }))
         );
         break;
+      case 'role_directory': {
+        const directory = payload as RoleDirectoryEntry[];
+        roleDirectoryRef.current = directory;
+        setUsers((prev) => {
+          const merged = withDirectory(prev);
+          localStorage.setItem('gest_v2_users', JSON.stringify(merged));
+          return merged;
+        });
+        setCurrentUser((prev) => {
+          const entry = directory.find((row) => row.email === prev.email.trim().toLowerCase());
+          if (!entry || entry.role === prev.role) return prev;
+          const synced = {
+            ...prev,
+            role: entry.role,
+            name: entry.name || prev.name,
+            buildingId: entry.buildingId ?? prev.buildingId,
+            buildingName: entry.buildingName ?? prev.buildingName,
+            specialty: entry.specialty ?? prev.specialty,
+            unitOrArea: entry.unitOrArea ?? prev.unitOrArea,
+            floor: entry.floor ?? prev.floor,
+            status: entry.status ?? prev.status,
+          };
+          localStorage.setItem('gest_v2_current_user', JSON.stringify(synced));
+          return synced;
+        });
+        break;
+      }
     }
   };
 
@@ -1107,6 +1145,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return neighborRequestsRef.current;
       case 'custom_roles':
         return customRolesRef.current;
+      case 'role_directory':
+        return toRoleDirectory(usersRef.current);
     }
   };
 
@@ -1149,6 +1189,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('gest_v2_custom_roles', JSON.stringify(customRoles));
     pushSharedPayload('custom_roles', customRoles);
   }, [customRoles]);
+
+  useEffect(() => {
+    const directory = toRoleDirectory(users);
+    roleDirectoryRef.current = directory;
+    localStorage.setItem('gest_v2_users', JSON.stringify(users));
+    pushSharedPayload('role_directory', directory);
+  }, [users]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_notifications', JSON.stringify(notifications));
@@ -1240,6 +1287,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           showToast('Acceso denegado', 'Esta cuenta fue eliminada y ya no tiene acceso a SOFER Gestión.', 'alert');
           return;
         }
+        await ensureSelfAdmin();
+        let remote = await fetchProfiles();
+        const selfRemote = remote.find((u) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
         loginWithGoogle(
           {
             id: session.user.id,
@@ -1247,18 +1297,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             email,
             avatar: meta.avatar_url || meta.picture,
             provider,
+            role: selfRemote?.role,
+            buildingId: selfRemote?.buildingId,
+            specialty: selfRemote?.specialty,
           },
           silent
         );
         const pendingUser: User = {
           id: session.user.id,
-          name: meta.full_name || meta.name || email,
+          name: selfRemote?.name || meta.full_name || meta.name || email,
           email,
-          role: 'unassigned',
-          avatar: meta.avatar_url || meta.picture || ADMIN_USER.avatar,
-          phone: '+34 600 000 000',
+          role: selfRemote?.role || 'unassigned',
+          avatar: meta.avatar_url || meta.picture || selfRemote?.avatar || ADMIN_USER.avatar,
+          phone: selfRemote?.phone || '+34 600 000 000',
           provider,
-          status: 'active',
+          status: selfRemote?.status || 'active',
+          buildingId: selfRemote?.buildingId,
+          buildingName: selfRemote?.buildingName,
+          specialty: selfRemote?.specialty,
+          unitOrArea: selfRemote?.unitOrArea,
+          floor: selfRemote?.floor,
         };
         const result = await upsertProfile(pendingUser, session.user.id);
         if (result.created) {
@@ -1273,10 +1331,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             targetRoles: ['admin'],
           });
         }
-        const remote = await fetchProfiles();
-        if (!remote.length) return;
+        remote = await fetchProfiles();
+        if (!remote.length) {
+          setCurrentUser((prev) => withDirectory([prev])[0] || prev);
+          return;
+        }
         setUsers((prev) => {
-          const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
+          const merged = withDirectory(mergeUsersByEmail(prev, remote));
           localStorage.setItem('gest_v2_users', JSON.stringify(merged));
           const self = merged.find((u) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
           if (self) {
@@ -1335,14 +1396,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         void fetchProfiles().then((remote) => {
           if (!remote.length) return;
           setUsers((prev) => {
-            const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
+            const merged = withDirectory(mergeUsersByEmail(prev, remote));
             localStorage.setItem('gest_v2_users', JSON.stringify(merged));
             return merged;
           });
           setCurrentUser((prev) => {
             const next = remote.find((u) => u.email.trim().toLowerCase() === prev.email.trim().toLowerCase());
-            if (!next) return prev;
-            const synced = { ...prev, ...next, id: prev.id || next.id };
+            const fromDir = roleDirectoryRef.current.find(
+              (row) => row.email === prev.email.trim().toLowerCase()
+            );
+            if (!next && !fromDir) return prev;
+            const synced = withDirectory([
+              {
+                ...prev,
+                ...(next || {}),
+                id: prev.id || next?.id,
+                role: fromDir?.role || next?.role || prev.role,
+              },
+            ])[0];
+            if (!synced || (synced.role === prev.role && synced.buildingId === prev.buildingId && synced.name === prev.name)) {
+              return prev;
+            }
             localStorage.setItem('gest_v2_current_user', JSON.stringify(synced));
             return synced;
           });
@@ -1425,20 +1499,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const refreshDirectory = useCallback(async () => {
     const remote = await fetchProfiles();
-    if (!remote.length) return;
     setUsers((prev) => {
-      const merged = withSingleAdmin(mergeUsersByEmail(prev, remote));
+      const merged = withDirectory(remote.length ? mergeUsersByEmail(prev, remote) : prev);
       localStorage.setItem('gest_v2_users', JSON.stringify(merged));
       return merged;
     });
     setCurrentUser((prev) => {
       const next = remote.find((u) => u.email.trim().toLowerCase() === prev.email.trim().toLowerCase());
-      if (!next) return prev;
-      if (next.role === prev.role && next.buildingId === prev.buildingId && next.name === prev.name) return prev;
-      const synced = {
-        ...prev,
-        ...next,
-      };
+      const synced = withDirectory([{ ...prev, ...(next || {}), id: prev.id || next?.id }])[0];
+      if (!synced) return prev;
+      if (synced.role === prev.role && synced.buildingId === prev.buildingId && synced.name === prev.name) return prev;
       localStorage.setItem('gest_v2_current_user', JSON.stringify(synced));
       return synced;
     });
@@ -1473,7 +1543,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     };
     tick();
-    const id = window.setInterval(tick, 15000);
+    const id = window.setInterval(tick, currentUser.role === 'unassigned' ? 4000 : 15000);
     return () => window.clearInterval(id);
   }, [isAuthenticated, currentUser.role, currentUser.email, refreshDirectory]);
 

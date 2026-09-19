@@ -51,7 +51,7 @@ as $$
 begin
   return exists (
     select 1 from public.profiles
-    where id = auth.uid()
+    where (id = auth.uid() or lower(email) = lower(coalesce(auth.jwt()->>'email', '')))
       and role = 'admin'
       and coalesce(status, 'active') is distinct from 'suspended'
   );
@@ -59,6 +59,38 @@ end;
 $$;
 
 grant execute on function public.is_app_admin() to authenticated, anon;
+
+create or replace function public.ensure_self_admin()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return;
+  end if;
+
+  update public.profiles
+  set role = 'admin', status = 'active', updated_at = now()
+  where id = auth.uid()
+    and lower(email) = 'davidalejandroroblesmarquez@gmail.com';
+
+  if exists (
+    select 1 from public.profiles
+    where role = 'admin'
+      and coalesce(status, 'active') is distinct from 'suspended'
+  ) then
+    return;
+  end if;
+
+  update public.profiles
+  set role = 'admin', status = 'active', updated_at = now()
+  where id = auth.uid();
+end;
+$$;
+
+grant execute on function public.ensure_self_admin() to authenticated, anon;
 
 create or replace function public.assign_profile_role(
   target_email text,
