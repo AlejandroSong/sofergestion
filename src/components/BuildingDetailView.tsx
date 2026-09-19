@@ -36,6 +36,7 @@ import {
   formatCurrency,
 } from '../utils/exportUtils';
 import { TicketStatus } from '../types';
+import { currentPeriodLabel } from '../utils/dates';
 import { AdjustRepairFundModal } from './AdjustRepairFundModal';
 import { CommonAreasManager } from './CommonAreasManager';
 import { FloorUtilityBillsManager } from './FloorUtilityBillsManager';
@@ -43,6 +44,7 @@ import { InsuranceManager } from './InsuranceManager';
 import { ExceptionalExpensesManager } from './ExceptionalExpensesManager';
 import { AddBuildingModal } from './AddBuildingModal';
 import { AssignPresidentModal } from './AssignPresidentModal';
+import { canViewBuildingAccounting } from '../utils/permissions';
 
 interface BuildingDetailViewProps {
   buildingId: string;
@@ -77,6 +79,7 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
 
   const building = getBuildingById(buildingId);
   if (!building) return null;
+  const showAccounting = canViewBuildingAccounting(currentUser, building.id);
 
   const buildingTickets = tickets.filter((t) => t.buildingId === buildingId);
   const buildingTransactions = transactions.filter((t) => t.buildingId === buildingId);
@@ -126,15 +129,13 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
       {/* Top Bar with Return button & Export Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#F4F6FA] p-4 rounded-2xl border border-[#E2E8F0] shadow-md">
         <div className="flex items-center gap-3">
-          {currentUser.role === 'admin' && (
-            <button
-              onClick={onBack}
-              className="p-2 hover:bg-[#E8EFF9] rounded-xl text-[#5A6B82] hover:text-[#16202E] transition-colors cursor-pointer"
-              title="Volver al catálogo"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-          )}
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-[#E8EFF9] rounded-xl text-[#5A6B82] hover:text-[#16202E] transition-colors cursor-pointer"
+            title="Volver"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-[#16202E]">{building.name}</h2>
@@ -151,15 +152,17 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
 
         {/* Action / Export buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() =>
-              exportBuildingFinancialStatementPDF(
-                building,
-                buildingTransactions,
-                buildingTickets,
-                'Agosto 2026'
-              )
-            }
+          {showAccounting && (
+            <>
+            <button
+              onClick={() =>
+                exportBuildingFinancialStatementPDF(
+                  building,
+                  buildingTransactions,
+                  buildingTickets,
+                  currentPeriodLabel()
+                )
+              }
             className="px-3 py-2 bg-[#F4F6FA] hover:bg-[#E8EFF9] text-[#16202E] border border-[#E2E8F0] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <FileDown className="w-3.5 h-3.5 text-[#0A2E6D]" />
@@ -168,13 +171,15 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
 
           <button
             onClick={() =>
-              exportAccountingToExcel(buildingTransactions, building.name, 'Agosto 2026')
+              exportAccountingToExcel(buildingTransactions, building.name, currentPeriodLabel())
             }
             className="px-3 py-2 bg-green-950/40 hover:bg-green-900/40 text-green-600 border border-green-800/50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />
             Excel Contable
           </button>
+            </>
+          )}
 
           {(currentUser.role === 'president' || currentUser.role === 'admin') && (
             <button
@@ -308,7 +313,7 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
         </div>
       </div>
 
-      {/* Financial Health KPIs */}
+      {showAccounting && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Ingresos */}
         <div className="bg-[#F4F6FA] p-4 rounded-2xl border border-[#E2E8F0] shadow-md">
@@ -419,11 +424,13 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* Tabs Switcher: Accounting vs Tickets vs Common Areas vs Floor Utilities */}
       <div className="bg-[#F4F6FA] rounded-2xl border border-[#E2E8F0] overflow-hidden shadow-md">
         <div className="border-b border-[#E2E8F0] px-4 py-3 bg-[#FFFFFF] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
+            {showAccounting && (
             <button
               onClick={() => setActiveTab('accounting')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -435,6 +442,7 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
               <Euro className="w-3.5 h-3.5 text-[#0A2E6D]" />
               Contabilidad & Libro Diario ({buildingTransactions.length})
             </button>
+            )}
             <button
               onClick={() => setActiveTab('tickets')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -508,7 +516,7 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
         </div>
 
         {/* Tab 1: Accounting Ledger */}
-        {activeTab === 'accounting' && (
+        {activeTab === 'accounting' && showAccounting && (
           <div className="p-4 space-y-4">
             {/* Filter buttons */}
             <div className="flex items-center justify-between">

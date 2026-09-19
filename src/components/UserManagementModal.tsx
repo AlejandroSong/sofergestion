@@ -250,7 +250,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {isOpen && currentUser.role === 'admin' && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-xs flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}

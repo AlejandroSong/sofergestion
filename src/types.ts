@@ -194,11 +194,12 @@ export interface WorkerPayout {
   amount: number;
   date: string;
   status: 'pagado' | 'pendiente';
-  paymentMethod: 'transferencia' | 'efectivo' | 'cheque';
+  paymentMethod: 'transferencia' | 'efectivo' | 'cheque' | 'tarjeta';
   referenceNumber: string;
   period: string;
   notes?: string;
   approvedByAdmin: string;
+  jobsCompletedCount?: number;
 }
 
 export type TransactionType = 'ingreso' | 'gasto';

@@ -667,14 +667,6 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
               )}
             </span>
           </div>
-
-          <button
-            onClick={() => setIsEditModalOpen(true)}
-            className="p-2.5 bg-[#F4F6FA] hover:bg-[#E8EFF9] text-[#0A2E6D] rounded-xl border border-[#E2E8F0] transition-colors cursor-pointer"
-            title="Editar datos de cuenta o domiciliación"
-          >
-            <Edit3 className="w-4 h-4" />
-          </button>
         </div>
       </div>
 

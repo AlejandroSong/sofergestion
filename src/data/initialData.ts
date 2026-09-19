@@ -1041,6 +1041,7 @@ export const INITIAL_WORKER_PAYOUTS: WorkerPayout[] = [
     period: 'Primera Nómina mensual Agosto 2026',
     notes: 'Pago por servicios de mantenimiento eléctrico en C.P. Calle Alcalá 45 y C.P. Paseo de la Castellana 120.',
     approvedByAdmin: 'David Robles',
+    jobsCompletedCount: 6,
   },
   {
     id: 'pay-002',
@@ -1056,6 +1057,7 @@ export const INITIAL_WORKER_PAYOUTS: WorkerPayout[] = [
     period: 'Primera Nómina mensual Agosto 2026',
     notes: 'Mantenimiento de bombas de agua y limpieza y mantenimiento de aljibes comunitarios.',
     approvedByAdmin: 'David Robles',
+    jobsCompletedCount: 8,
   },
   {
     id: 'pay-003',
@@ -1071,6 +1073,7 @@ export const INITIAL_WORKER_PAYOUTS: WorkerPayout[] = [
     period: 'Primera Nómina mensual Agosto 2026',
     notes: 'Reparación de cerraduras de acceso y mantenimiento de cancelería.',
     approvedByAdmin: 'David Robles',
+    jobsCompletedCount: 5,
   },
   {
     id: 'pay-004',
@@ -1086,6 +1089,7 @@ export const INITIAL_WORKER_PAYOUTS: WorkerPayout[] = [
     period: 'Segunda Nómina mensual Agosto 2026',
     notes: 'Honorarios por 4 reparaciones eléctricas en C.P. Plaza Mayor 5 y Mirador Real.',
     approvedByAdmin: 'David Robles',
+    jobsCompletedCount: 4,
   },
   {
     id: 'pay-005',
@@ -1101,6 +1105,7 @@ export const INITIAL_WORKER_PAYOUTS: WorkerPayout[] = [
     period: 'Segunda Nómina mensual Agosto 2026',
     notes: 'Sustitución de presurizador en Parque Central y reparaciones de fugas.',
     approvedByAdmin: 'David Robles',
+    jobsCompletedCount: 3,
   },
 ];
 

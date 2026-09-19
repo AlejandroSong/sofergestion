@@ -32,7 +32,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { exportAccountingToExcel, exportTicketsToExcel, formatCurrency } from '../utils/exportUtils';
+import { exportAccountingToExcel, exportBuildingsPortfolioToExcel, exportTicketsToExcel, formatCurrency } from '../utils/exportUtils';
+import { collectWorkerRoster, countResolvedJobs } from '../utils/workers';
 import { Building, Ticket } from '../types';
 import { WorkerPayoutModal } from './WorkerPayoutModal';
 import { AdjustRepairFundModal } from './AdjustRepairFundModal';
@@ -69,6 +70,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSelectedTicketId,
     deleteBuilding,
     resetBuildingOperations,
+    deleteTicket,
+    deleteTransaction,
+    deleteWorkerPayout,
   } = useApp();
 
   const [buildingSearch, setBuildingSearch] = useState('');
@@ -117,10 +121,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const balanceGlobal = totalIngresos - totalGastos;
   const totalUnitsGlobal = buildings.reduce((acc, b) => acc + b.totalUnits, 0);
   const totalRepairBoxesGlobal = buildings.reduce((acc, b) => acc + (b.repairFund || 0), 0);
-  const totalWorkerPayoutsPaid = workerPayouts
-    .filter((p) => p.status === 'pagado')
-    .reduce((acc, p) => acc + p.amount, 0);
+  const paidPayouts = workerPayouts.filter((p) => p.status === 'pagado');
+  const totalWorkerPayoutsPaid = paidPayouts.reduce((acc, p) => acc + p.amount, 0);
 
+  const workerRoster = collectWorkerRoster(allUsers, workerPayouts, tickets);
   const isWorker = currentUser.role === 'worker';
   const myWorkerTickets = tickets.filter(
     (t) => t.assignedWorkerId === currentUser.id || t.assignedWorkerName === currentUser.name
@@ -157,10 +161,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!buildingSearch) return true;
     const q = buildingSearch.toLowerCase();
     return (
-      b.name.toLowerCase().includes(q) ||
-      b.code.toLowerCase().includes(q) ||
-      b.presidentName.toLowerCase().includes(q) ||
-      b.city.toLowerCase().includes(q)
+      (b.name || '').toLowerCase().includes(q) ||
+      (b.code || '').toLowerCase().includes(q) ||
+      (b.presidentName || '').toLowerCase().includes(q) ||
+      (b.city || '').toLowerCase().includes(q) ||
+      (b.address || '').toLowerCase().includes(q)
     );
   });
 
@@ -449,7 +454,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ) : (
           <>
             {/* Admin KPI 1: Inmuebles */}
-            <div className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between">
+            <div
+              onClick={() => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-[#0A2E6D]/40 transition-all"
+            >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#5A6B82] uppercase tracking-wider">
                   Edificios Activos
@@ -468,7 +476,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Admin KPI 2: Balance Neto */}
-            <div className="bg-blue-50 border border-blue-200 text-blue-950 p-4 rounded-xl shadow-sm flex flex-col justify-between">
+            <div
+              onClick={() => document.getElementById('accounting-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-blue-50 border border-blue-200 text-blue-950 p-4 rounded-xl shadow-sm flex flex-col justify-between cursor-pointer hover:border-blue-400 transition-all"
+            >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wider text-blue-600">
                   Balance Neto
@@ -494,7 +505,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Admin KPI 3: Cajas Reparación */}
-            <div className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between">
+            <div
+              onClick={() => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-yellow-400 transition-all"
+            >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#5A6B82] uppercase tracking-wider">
                   Total Cajas Reparación
@@ -514,7 +528,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Admin KPI 4: Pagos a Trabajadores (Nómina Liquidada) */}
-            <div className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between">
+            <div
+              onClick={() => document.getElementById('payroll-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-purple-400 transition-all"
+            >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#5A6B82] uppercase tracking-wider">
                   Nómina Liquidada
@@ -528,7 +545,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {formatCurrency(totalWorkerPayoutsPaid)}
                 </p>
                 <p className="text-xs text-[#5A6B82] mt-1">
-                  {workerPayouts.length} liquidaciones a operarios
+                  {paidPayouts.length} liquidaciones a operarios
                 </p>
               </div>
             </div>
@@ -562,9 +579,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <button
-              onClick={() => exportAccountingToExcel(transactions, 'Portafolio_Completo', 'Agosto 2026')}
-              className="p-2 border border-[#E2E8F0] hover:bg-[#1E1E1E] rounded-lg text-[#5A6B82] text-xs font-semibold flex items-center gap-1 cursor-pointer"
-              title="Exportar todo a Excel"
+              onClick={() => exportBuildingsPortfolioToExcel(filteredBuildings, transactions, tickets)}
+              className="p-2 border border-[#E2E8F0] hover:bg-slate-50 rounded-lg text-[#5A6B82] text-xs font-semibold flex items-center gap-1 cursor-pointer"
+              title="Exportar portafolio de edificios a Excel"
             >
               <FileSpreadsheet className="w-4 h-4 text-green-600" />
             </button>
@@ -573,6 +590,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Buildings Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+          {filteredBuildings.length === 0 && (
+            <p className="col-span-full text-sm text-[#5A6B82] text-center py-8">
+              {buildingSearch
+                ? `Ningún edificio coincide con “${buildingSearch}”.`
+                : 'Aún no hay edificios registrados. Usa Nuevo Edificio para dar de alta el primero.'}
+            </p>
+          )}
           {filteredBuildings.map((bldg) => {
             const bldgTickets = tickets.filter((t) => t.buildingId === bldg.id);
             const bldgActive = bldgTickets.filter((t) => t.status !== 'resuelta');
@@ -730,17 +754,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           
           <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-            {allUsers.filter(u => u.role === 'worker').map((worker) => {
-              const workerTickets = tickets.filter(t => t.assignedWorkerId === worker.id);
-              const activeTickets = workerTickets.filter(t => t.status !== 'resuelta');
+            {workerRoster.map((worker) => {
+              const workerTickets = tickets.filter(
+                (t) => t.assignedWorkerId === worker.id || t.assignedWorkerName === worker.name
+              );
+              const activeTickets = workerTickets.filter((t) => t.status !== 'resuelta');
               return (
                 <div key={worker.id} className="bg-[#FFFFFF] p-3 rounded-xl border border-[#E2E8F0] flex items-center gap-3">
-                  <img src={worker.avatar} alt={worker.name} className="w-10 h-10 rounded-full bg-[#F4F6FA] border border-[#E2E8F0] shrink-0 object-cover" referrerPolicy="no-referrer" />
+                  {worker.avatar ? (
+                    <img src={worker.avatar} alt={worker.name} className="w-10 h-10 rounded-full bg-[#F4F6FA] border border-[#E2E8F0] shrink-0 object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-green-50 border border-green-200 text-green-700 font-bold text-xs flex items-center justify-center shrink-0">
+                      {worker.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-[#16202E] truncate">{worker.name}</p>
                     <p className="text-[11px] text-[#5A6B82] flex items-center gap-1">
-                      <Wrench className="w-3 h-3" /> {worker.specialty || 'General'}
+                      <Wrench className="w-3 h-3" /> {worker.specialty || 'Mantenimiento general'}
                     </p>
+                    {!worker.fromAccount && (
+                      <p className="text-[10px] text-amber-700">Sin cuenta de acceso todavía</p>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <span className="block text-xs font-bold text-[#16202E]">{activeTickets.length}</span>
@@ -749,14 +784,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               );
             })}
-            {allUsers.filter(u => u.role === 'worker').length === 0 && (
-              <p className="text-xs text-[#5A6B82] text-center py-4">No hay operarioes registrados.</p>
+            {workerRoster.length === 0 && (
+              <p className="text-xs text-[#5A6B82] text-center py-4">No hay operarios registrados. Asigna el rol de trabajador o registra una nómina.</p>
             )}
           </div>
         </div>
 
         {/* Worker Payouts (Right) */}
-        <div className="xl:col-span-2 bg-[#F4F6FA] rounded-2xl border border-[#E2E8F0] p-6 shadow-md space-y-4">
+        <div id="payroll-section" className="xl:col-span-2 bg-[#F4F6FA] rounded-2xl border border-[#E2E8F0] p-6 shadow-md space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-purple-400 uppercase tracking-wider bg-purple-950/40 px-2 py-0.5 rounded border border-purple-800/40 mb-1">
@@ -800,7 +835,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {workerPayouts.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-6 text-center text-[#5A6B82]">
-                      No hay liquidaciones a operarioes registradas.
+                      No hay liquidaciones a operarios registradas.
                     </td>
                   </tr>
                 ) : (
@@ -811,7 +846,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <span className="font-bold text-[#16202E]">{p.workerName}</span>
                       </td>
                       <td className="py-2.5 px-3 text-[#5A6B82]">{p.period}</td>
-                      <td className="py-2.5 px-3">{p.jobsCompletedCount} tareas</td>
+                      <td className="py-2.5 px-3">
+                        {p.jobsCompletedCount ?? countResolvedJobs(tickets, { id: p.workerId, name: p.workerName })} tareas
+                      </td>
                       <td className="py-2.5 px-3 text-[#5A6B82] capitalize">
                         {p.paymentMethod} {p.referenceNumber && `(${p.referenceNumber})`}
                       </td>
@@ -830,17 +867,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {formatCurrency(p.amount)}
                       </td>
                       <td className="py-2.5 px-3 text-center">
-                        <button
-                          onClick={() =>
-                            updateWorkerPayoutStatus(
-                              p.id,
-                              p.status === 'pagado' ? 'pendiente' : 'pagado'
-                            )
-                          }
-                          className="text-[11px] text-[#0A2E6D] hover:underline font-semibold cursor-pointer"
-                        >
-                          {p.status === 'pagado' ? 'Marcar Pendiente' : 'Pagar'}
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() =>
+                              updateWorkerPayoutStatus(
+                                p.id,
+                                p.status === 'pagado' ? 'pendiente' : 'pagado'
+                              )
+                            }
+                            className="text-[11px] text-[#0A2E6D] hover:underline font-semibold cursor-pointer"
+                          >
+                            {p.status === 'pagado' ? 'Marcar Pendiente' : 'Pagar'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`¿Eliminar la nómina ${p.code}?`)) deleteWorkerPayout(p.id);
+                            }}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded cursor-pointer"
+                            title="Eliminar nómina"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1178,14 +1227,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     )}
                   </div>
 
-                  {/* Open Ticket Details Button */}
-                  <button
-                    onClick={() => setSelectedTicketId(tkt.id)}
-                    className="w-full mt-3 py-2 px-3 bg-[#0A2E6D] hover:bg-[#D4B370] text-white hover:text-[#0A0A0A] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                  >
-                    <ArrowUpRight className="w-4 h-4" />
-                    Ver y Gestionar Incidencia
-                  </button>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => setSelectedTicketId(tkt.id)}
+                      className="flex-1 py-2 px-3 bg-[#0A2E6D] hover:bg-[#D4B370] text-white hover:text-[#0A0A0A] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                    >
+                      <ArrowUpRight className="w-4 h-4" />
+                      Ver y Gestionar Incidencia
+                    </button>
+                    {currentUser.role === 'admin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`¿Eliminar la incidencia ${tkt.ticketNumber}?`)) deleteTicket(tkt.id);
+                        }}
+                        className="p-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                        title="Eliminar incidencia"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -1213,7 +1275,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => exportAccountingToExcel(transactions, buildings, 'Libro_Diario_Consolidado')}
+                onClick={() => exportAccountingToExcel(transactions, 'Libro Diario Consolidado', 'Historico')}
                 className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-[#16202E] border border-[#CBD5E1] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
               >
                 <FileSpreadsheet className="w-4 h-4 text-green-600" />
@@ -1241,17 +1303,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <th className="py-3 px-4 text-left">Categoría</th>
                   <th className="py-3 px-4 text-left">Método</th>
                   <th className="py-3 px-4 text-right">Importe</th>
+                  <th className="py-3 px-4 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
                 {transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-6 text-center text-[#5A6B82]">
+                    <td colSpan={8} className="py-6 text-center text-[#5A6B82]">
                       No hay movimientos contables registrados.
                     </td>
                   </tr>
                 ) : (
-                  transactions.slice(0, 10).map((tx) => (
+                  transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 font-mono font-semibold text-[#0A2E6D]">{tx.code}</td>
                       <td className="py-2.5 px-3 font-mono text-[#5A6B82]">{tx.date}</td>
@@ -1266,6 +1329,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       >
                         {tx.type === 'ingreso' ? '+' : '-'}
                         {formatCurrency(tx.amount)}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`¿Eliminar el asiento ${tx.code}?`)) deleteTransaction(tx.id);
+                          }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
+                          title="Eliminar asiento"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))

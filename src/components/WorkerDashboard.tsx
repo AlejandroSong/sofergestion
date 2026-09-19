@@ -31,7 +31,7 @@ import {
   exportTicketsToExcel,
   formatCurrency,
 } from '../utils/exportUtils';
-import { formatIsoDateEs } from '../utils/dates';
+import { currentPeriodLabel, formatIsoDateEs } from '../utils/dates';
 import { Ticket, Building, User } from '../types';
 import { WorkerRepairFundModal } from './WorkerRepairFundModal';
 import { WorkerServiceModal } from './WorkerServiceModal';
@@ -121,7 +121,7 @@ export const WorkerDashboard: React.FC = () => {
                   currentUser,
                   myAssignedTickets,
                   transactions,
-                  'Agosto 2026'
+                  currentPeriodLabel()
                 )
               }
               className="px-4 py-3 bg-[#0A2E6D] hover:bg-[#D4B370] text-[#0A0A0A] rounded-xl text-xs font-bold shadow-lg flex items-center gap-2 transition-all cursor-pointer hover:scale-105"
@@ -154,24 +154,9 @@ export const WorkerDashboard: React.FC = () => {
           <Wrench className="w-4 h-4" />
           <span>Incidencias & Cajas de Reparación ({myAssignedTickets.length})</span>
         </button>
-
-        <button
-          onClick={() => setWorkerMainTab('neighbor_accounts')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            workerMainTab === 'neighbor_accounts'
-              ? 'bg-[#0A2E6D] text-white shadow-md'
-              : 'bg-white text-[#5A6B82] border border-[#CBD5E1] hover:bg-slate-50'
-          }`}
-        >
-          <CreditCard className="w-4 h-4 text-yellow-400" />
-          <span>Cuentas de Vecinos ({allUsers.filter(u => u.role === 'neighbor').length})</span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-[#0A2E6D]">
-            Gestión de Cuotas & Saldo
-          </span>
-        </button>
       </div>
 
-      {workerMainTab === 'neighbor_accounts' ? (
+      {false && workerMainTab === 'neighbor_accounts' ? (
         /* Worker Neighbor Accounts Management View */
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="bg-white rounded-2xl border border-[#CBD5E1] p-6 shadow-sm">
@@ -844,17 +829,6 @@ export const WorkerDashboard: React.FC = () => {
                     <span>{bldgActiveTickets.length} incidencias activos</span>
                     <span className="text-[#5A6B82]">Base: {formatCurrency(bldg.initialRepairFund)}</span>
                   </div>
-                  
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedBuildingForExpenses(bldg);
-                    }}
-                    className="w-full mt-2 py-1.5 flex items-center justify-center gap-1.5 text-xs font-semibold bg-[#E8EFF9] text-[#5A6B82] hover:text-[#0A2E6D] hover:bg-[#E8EFF9] rounded-lg transition-colors border border-[#2D2D2D]"
-                  >
-                    <Receipt className="w-3.5 h-3.5" />
-                    Gastos Excepcionales
-                  </button>
                 </div>
               </div>
             );

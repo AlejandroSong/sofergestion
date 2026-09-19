@@ -178,14 +178,6 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
                 <><CheckCircle2 className="w-4 h-4" /> Al corriente de pago</>
               )}
             </span>
-
-            <button
-              onClick={() => setIsEditModalOpen(true)}
-              className="px-3.5 py-2 bg-[#F4F6FA] hover:bg-[#E8EFF9] text-[#0A2E6D] rounded-xl text-xs font-bold border border-[#E2E8F0] flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>Editar Domiciliación</span>
-            </button>
           </div>
         </div>
 

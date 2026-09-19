@@ -53,6 +53,39 @@ export function exportAccountingToExcel(
   XLSX.writeFile(workbook, fileName);
 }
 
+export function exportBuildingsPortfolioToExcel(
+  buildings: Building[],
+  transactions: Transaction[],
+  tickets: Ticket[]
+) {
+  const data = buildings.map((b) => {
+    const tx = transactions.filter((t) => t.buildingId === b.id);
+    const income = tx.filter((t) => t.type === 'ingreso').reduce((a, c) => a + c.amount, 0);
+    const expense = tx.filter((t) => t.type === 'gasto').reduce((a, c) => a + c.amount, 0);
+    const openTickets = tickets.filter((t) => t.buildingId === b.id && t.status !== 'resuelta').length;
+    return {
+      'Código': b.code,
+      'Edificio': b.name,
+      'Dirección': b.address,
+      'Ciudad': b.city,
+      'Unidades': b.totalUnits,
+      'Pisos': b.floors,
+      'Cuota mensual (€)': b.monthlyQuotaFee,
+      'Caja reparación (€)': b.repairFund || 0,
+      'Ingresos (€)': income,
+      'Gastos (€)': expense,
+      'Balance (€)': income - expense,
+      'Presidente': b.presidentName || 'Sin asignar',
+      'Incidencias abiertas': openTickets,
+    };
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Edificios');
+  XLSX.writeFile(workbook, `Portafolio_Edificios_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
 export function exportTicketsToExcel(tickets: Ticket[], buildingName: string = 'General') {
   const data = tickets.map((t) => ({
     'N° Ticket': t.ticketNumber,
@@ -415,7 +448,7 @@ export function exportWorkerExpenseReportPDF(
 export function exportNeighborReceiptPDF(
   user: User,
   buildingName: string = 'Comunidad de Propietarios',
-  periodLabel: string = 'Agosto 2026',
+  periodLabel: string = new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
   amount: number = 95.0
 ) {
   const doc = new jsPDF();

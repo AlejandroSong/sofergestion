@@ -30,6 +30,25 @@ export function addPeriodToIso(iso: string, frequency: 'mensual' | 'anual'): str
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+export function currentPeriodLabel(): string {
+  const now = new Date();
+  const months = [
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
+  ];
+  return `${months[now.getMonth()]} ${now.getFullYear()}`;
+}
+
 export function nextMonthFifthIso(): string {
   const now = new Date();
   const month = now.getMonth() + 1;

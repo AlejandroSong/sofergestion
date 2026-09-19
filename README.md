@@ -15,10 +15,10 @@ En Vercel, **Deployment Protection → Vercel Authentication** debe estar apagad
 
 - Login solo con Google (GIS + Supabase `signInWithIdToken`).
 - Cuentas nuevas entran como **sin rol**; el admin las ve y asigna.
-- Notificaciones de solicitud de acceso (SQL + panel).
+- Paneles por rol (admin, presidente, trabajador, vecino) con permisos: el admin gestiona fincas, contabilidad, nómina, usuarios y catálogo SOFER; el resto no puede crear ni editar lo que no le corresponde.
+- Notificaciones de solicitud de acceso y de incidencias (inbox + panel).
 - El admin puede ceder el rol: el cliente puede quitarte el admin. Solo se protege al **último** administrador.
 - Al eliminar una cuenta se revoca el acceso; no puede volver a entrar con el mismo correo.
-- Trabajador, presidente y vecino ven su propio panel (sin simulador de perfiles).
 
 ## Local
 

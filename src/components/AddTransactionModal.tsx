@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Euro, Building2, PlusCircle, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -28,6 +28,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<'transferencia' | 'efectivo' | 'tarjeta'>('transferencia');
   const [referenceNumber, setReferenceNumber] = useState(`REF-${Math.floor(10000 + Math.random() * 90000)}`);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setBuildingId(defaultBuildingId || currentUser.buildingId || buildings[0]?.id || '');
+    setReferenceNumber(`REF-${Math.floor(10000 + Math.random() * 90000)}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset when the modal opens
+  }, [isOpen, defaultBuildingId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

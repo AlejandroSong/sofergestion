@@ -23,10 +23,12 @@ import {
   Coins,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { canUpdateTicketStatus, canChargeRepairFund, canDeleteTickets, canAssignWorkers } from '../utils/permissions';
 import { TicketStatus } from '../types';
 import { exportTicketDetailPDF, formatCurrency } from '../utils/exportUtils';
 import { WorkerServiceModal } from './WorkerServiceModal';
 import { WorkerRepairFundModal } from './WorkerRepairFundModal';
+import { collectWorkerRoster } from '../utils/workers';
 
 interface TicketDetailModalProps {
   ticketId: string | null;
@@ -40,6 +42,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
     buildings,
     currentUser,
     allUsers,
+    workerPayouts,
     updateTicketStatus,
     assignWorkerToTicket,
     deleteTicket,
@@ -53,7 +56,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
   if (!ticket) return null;
 
   const building = buildings.find((b) => b.id === ticket.buildingId);
-  const workers = allUsers.filter((u) => u.role === 'worker');
+  const workers = collectWorkerRoster(allUsers, workerPayouts, tickets);
   const existingExpenses = ticket.repairExpenses || [];
 
   const getPriorityBadge = (p: string) => {
@@ -161,7 +164,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                {currentUser.role === 'admin' && (
+                {canDeleteTickets(currentUser) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -261,7 +264,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
                     </p>
                   </div>
 
-                  {currentUser.role === 'admin' && (
+                  {canAssignWorkers(currentUser) && (
                     <div className="flex items-center gap-2">
                       <select
                         value={ticket.assignedWorkerId || ''}
@@ -280,7 +283,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
                 </div>
 
                 {/* Worker / Admin State Transitions Controls & Modifying Money Box */}
-                {(currentUser.role === 'worker' || currentUser.role === 'admin') && (
+                {canUpdateTicketStatus(currentUser, ticket) && (
                   <div className="pt-2 border-t border-[#E2E8F0] flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-semibold text-[#5A6B82] mr-1">Cambiar Estado:</span>
@@ -312,6 +315,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
                     </div>
 
                     {/* Button to Open Repair Fund Modal (Requested) */}
+                    {canChargeRepairFund(currentUser, ticket) && (
                     <button
                       onClick={() => setIsRepairFundModalOpen(true)}
                       className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0A2E6D] hover:bg-[#D4B370] text-[#0A0A0A] flex items-center gap-1.5 cursor-pointer shadow-xs"
@@ -319,6 +323,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
                       <Receipt className="w-3.5 h-3.5" />
                       Modificar Caja & Añadir Gasto
                     </button>
+                    )}
                   </div>
                 )}
               </div>

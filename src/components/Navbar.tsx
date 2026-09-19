@@ -171,7 +171,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
                 </button>
               )}
 
-              {(currentUser.role === 'admin' || currentUser.role === 'worker') && (
+              {currentUser.role === 'admin' && (
                 <button
                   onClick={onOpenReports}
                   className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${

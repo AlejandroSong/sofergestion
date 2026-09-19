@@ -17,7 +17,7 @@ export const InsuranceManager: React.FC<InsuranceManagerProps> = ({ building }) 
   const [startDate, setStartDate] = useState(building.insurance?.startDate || '');
   const [endDate, setEndDate] = useState(building.insurance?.endDate || '');
 
-  const canEdit = currentUser.role === 'admin' || currentUser.role === 'worker';
+  const canEdit = currentUser.role === 'admin';
   const hasInsurance = !!building.insurance?.companyName;
 
   const handleSave = () => {

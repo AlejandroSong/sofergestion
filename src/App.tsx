@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
-import { RoleSwitcher } from './components/RoleSwitcher';
 import { ToastContainer } from './components/ToastContainer';
 import { AuthScreen } from './components/AuthScreen';
 import { UnassignedRoleScreen } from './components/UnassignedRoleScreen';
@@ -16,6 +15,7 @@ import { AddBuildingModal } from './components/AddBuildingModal';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { ReportsModal } from './components/ReportsModal';
 import { SoferServicesModal } from './components/SoferServicesModal';
+import { canOpenBuilding, canOpenReports, canManageBuildings, canPostAccounting, canManageSoferCatalog, canCreateTicket } from './utils/permissions';
 
 const MainAppContent: React.FC = () => {
   const {
@@ -35,6 +35,12 @@ const MainAppContent: React.FC = () => {
   const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isSoferOpen, setIsSoferOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedBuildingId && !canOpenBuilding(currentUser, selectedBuildingId)) {
+      setSelectedBuildingId(null);
+    }
+  }, [selectedBuildingId, currentUser, setSelectedBuildingId]);
 
   if (!authReady) {
     return (
@@ -66,11 +72,18 @@ const MainAppContent: React.FC = () => {
     <div className="min-h-screen bg-[#FFFFFF] text-[#16202E] flex flex-col font-sans selection:bg-[#0A2E6D] selection:text-black">
       {/* Top Navigation Bar */}
       <Navbar
-        onOpenCreateTicket={() => setIsCreateTicketOpen(true)}
-        onOpenAddBuilding={() => setIsAddBuildingOpen(true)}
-        onOpenAddTransaction={() => setIsAddTransactionOpen(true)}
-        onOpenReports={() => setIsReportsOpen(true)}
-        onOpenSoferServices={() => setIsSoferOpen(true)}
+        onOpenCreateTicket={() => {
+          if (canCreateTicket(currentUser)) setIsCreateTicketOpen(true);
+        }}
+        onOpenAddBuilding={() => {
+          if (canManageBuildings(currentUser)) setIsAddBuildingOpen(true);
+        }}
+        onOpenReports={() => {
+          if (canOpenReports(currentUser)) setIsReportsOpen(true);
+        }}
+        onOpenSoferServices={() => {
+          if (canManageSoferCatalog(currentUser)) setIsSoferOpen(true);
+        }}
       />
 
       {/* Main Content Area */}
@@ -117,7 +130,7 @@ const MainAppContent: React.FC = () => {
       <ToastContainer />
 
       <CreateTicketModal
-        isOpen={isCreateTicketOpen}
+        isOpen={isCreateTicketOpen && canCreateTicket(currentUser)}
         onClose={() => {
           setIsCreateTicketOpen(false);
           setTicketInitialFloor(undefined);
@@ -136,22 +149,22 @@ const MainAppContent: React.FC = () => {
       )}
 
       <AddBuildingModal
-        isOpen={isAddBuildingOpen}
+        isOpen={isAddBuildingOpen && canManageBuildings(currentUser)}
         onClose={() => setIsAddBuildingOpen(false)}
       />
 
       <AddTransactionModal
-        isOpen={isAddTransactionOpen}
+        isOpen={isAddTransactionOpen && canPostAccounting(currentUser)}
         onClose={() => setIsAddTransactionOpen(false)}
         defaultBuildingId={selectedBuildingId || undefined}
       />
 
       <ReportsModal
-        isOpen={isReportsOpen}
+        isOpen={isReportsOpen && canOpenReports(currentUser)}
         onClose={() => setIsReportsOpen(false)}
       />
 
-      <SoferServicesModal isOpen={isSoferOpen} onClose={() => setIsSoferOpen(false)} />
+      <SoferServicesModal isOpen={isSoferOpen && canManageSoferCatalog(currentUser)} onClose={() => setIsSoferOpen(false)} />
 
       {/* Footer */}
       <footer className="border-t border-[#E2E8F0] bg-[#F4F6FA] py-4 text-center text-xs text-[#5A6B82]">

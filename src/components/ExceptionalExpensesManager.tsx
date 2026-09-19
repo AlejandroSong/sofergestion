@@ -17,7 +17,7 @@ export const ExceptionalExpensesManager: React.FC<ExceptionalExpensesManagerProp
   const [dateIncurred, setDateIncurred] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState(new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().slice(0, 10));
 
-  const canEdit = currentUser.role === 'admin' || currentUser.role === 'worker';
+  const canEdit = currentUser.role === 'admin';
   const expenses = building.exceptionalExpenses || [];
 
   const handleSave = (e: React.FormEvent) => {

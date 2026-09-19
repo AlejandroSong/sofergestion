@@ -33,7 +33,11 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     if (isOpen) {
       if (initialFloor) setFloor(initialFloor);
       if (initialUnitOrArea) setUnitOrArea(initialUnitOrArea);
-      if (defaultBuildingId) setBuildingId(defaultBuildingId);
+      if (currentUser.buildingId && (currentUser.role === 'neighbor' || currentUser.role === 'president')) {
+        setBuildingId(currentUser.buildingId);
+      } else if (defaultBuildingId) {
+        setBuildingId(defaultBuildingId);
+      }
     }
   }, [isOpen, initialFloor, initialUnitOrArea, defaultBuildingId]);
   const [category, setCategory] = useState<TicketCategory>('puertas_accesos');
@@ -206,6 +210,11 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                   <div className="px-3 py-2 bg-[#F4F6FA] border border-[#E2E8F0] rounded-lg text-xs font-semibold text-[#16202E] flex items-center justify-between">
                     <span>{currentUser.buildingName || 'Tu Edificio Asignado'}</span>
                     <span className="text-[10px] text-[#0A2E6D] uppercase font-mono">Fijo por Permiso</span>
+                  </div>
+                ) : currentUser.role === 'neighbor' && currentUser.buildingId ? (
+                  <div className="px-3 py-2 bg-[#F4F6FA] border border-[#E2E8F0] rounded-lg text-xs font-semibold text-[#16202E] flex items-center justify-between">
+                    <span>{currentUser.buildingName || 'Tu Edificio'}</span>
+                    <span className="text-[10px] text-[#0A2E6D] uppercase font-mono">Fijo</span>
                   </div>
                 ) : (
                   <select

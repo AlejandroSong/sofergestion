@@ -14,10 +14,23 @@ import {
   Clock,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { isNotificationForUser } from '../utils/notifications';
+import { canOpenBuilding } from '../utils/permissions';
 
 interface NotificationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+function formatNotifTime(timestamp: string) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('es-ES', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose }) => {
@@ -29,21 +42,13 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
     soundEnabled,
     setSoundEnabled,
     setSelectedTicketId,
+    setSelectedBuildingId,
     unreadCount,
   } = useApp();
 
-  const userNotifications = notifications.filter((n) => {
-    if (!n.targetRoles.includes(currentUser.role)) return false;
-    
-    // Strict RBAC: Presidents should ONLY see notifications from their assigned building
-    if (currentUser.role === 'president') {
-      if (n.buildingId && n.buildingId !== currentUser.buildingId) {
-        return false;
-      }
-    }
-    
-    return true;
-  });
+  const userNotifications = notifications
+    .filter((n) => isNotificationForUser(n, currentUser))
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -60,10 +65,15 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
     }
   };
 
-  const handleClickNotification = (n: typeof notifications[0]) => {
+  const handleClickNotification = (n: (typeof notifications)[0]) => {
     markNotificationAsRead(n.id);
     if (n.ticketId) {
       setSelectedTicketId(n.ticketId);
+      onClose();
+      return;
+    }
+    if (n.buildingId && canOpenBuilding(currentUser, n.buildingId)) {
+      setSelectedBuildingId(n.buildingId);
       onClose();
     }
   };
@@ -72,7 +82,6 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -81,7 +90,6 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
             className="fixed inset-0 bg-black/75 backdrop-blur-xs z-50"
           />
 
-          {/* Drawer panel */}
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
@@ -89,22 +97,22 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
             transition={{ type: 'spring', damping: 28, stiffness: 280 }}
             className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-[#F4F6FA] shadow-2xl z-50 border-l border-[#E2E8F0] flex flex-col text-[#16202E]"
           >
-            {/* Drawer Header */}
             <div className="p-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#FFFFFF]">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-[#E8EFF9] text-[#0A2E6D] border border-[#E2E8F0]">
                   <Bell className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-[#16202E] text-base">Notificaciones Push</h3>
+                  <h3 className="font-bold text-[#16202E] text-base">Notificaciones</h3>
                   <p className="text-xs text-[#5A6B82]">
-                    {unreadCount > 0 ? `${unreadCount} sin leer en tiempo real` : 'Todas leídas'}
+                    {unreadCount > 0 ? `${unreadCount} sin leer` : 'Todas leídas'}
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() => setSoundEnabled(!soundEnabled)}
                   className={`p-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     soundEnabled ? 'text-[#0A2E6D] hover:bg-[#E8EFF9]' : 'text-[#5A6B82] hover:bg-[#E8EFF9]'
@@ -115,6 +123,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
                 </button>
 
                 <button
+                  type="button"
                   onClick={onClose}
                   className="p-2 text-[#5A6B82] hover:text-[#16202E] rounded-lg hover:bg-[#E8EFF9] transition-colors cursor-pointer"
                 >
@@ -123,13 +132,13 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
               </div>
             </div>
 
-            {/* Quick Actions */}
             <div className="px-4 py-2.5 bg-[#F4F6FA] border-b border-[#E2E8F0] flex items-center justify-between">
               <span className="text-xs font-medium text-[#5A6B82]">
-                Rol actual: <span className="capitalize font-bold text-[#0A2E6D]">{currentUser.role}</span>
+                {userNotifications.length} avisos para tu rol
               </span>
               {unreadCount > 0 && (
                 <button
+                  type="button"
                   onClick={markAllNotificationsAsRead}
                   className="inline-flex items-center gap-1 text-xs font-medium text-[#0A2E6D] hover:text-[#D4B370] transition-colors cursor-pointer"
                 >
@@ -139,57 +148,49 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
               )}
             </div>
 
-            {/* Notifications List */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 divide-y divide-[#202020]">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {userNotifications.length === 0 ? (
                 <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-[#5A6B82]">
-                  <Bell className="w-12 h-12 stroke-1 mb-2 text-[#444444]" />
+                  <Bell className="w-12 h-12 stroke-1 mb-2 text-[#CBD5E1]" />
                   <p className="text-sm font-medium text-[#16202E]">Bandeja al día</p>
-                  <p className="text-xs mt-1">No hay alertas recientes para tu rol.</p>
+                  <p className="text-xs mt-1">Cuando haya incidencias, pagos o solicitudes, aparecerán aquí.</p>
                 </div>
               ) : (
                 userNotifications.map((notif) => (
                   <div
                     key={notif.id}
                     onClick={() => handleClickNotification(notif)}
-                    className={`pt-2 first:pt-0 group p-3 rounded-xl transition-all cursor-pointer ${
+                    className={`group p-3 rounded-xl transition-all cursor-pointer ${
                       notif.read
-                        ? 'bg-transparent hover:bg-[#F4F6FA] opacity-80'
-                        : 'bg-[#F4F6FA] border border-[#E2E8F0] shadow-xs'
+                        ? 'bg-white border border-transparent hover:border-[#E2E8F0] opacity-80'
+                        : 'bg-white border border-[#0A2E6D]/20 shadow-xs'
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 p-1.5 rounded-lg bg-[#F4F6FA] shadow-2xs border border-[#E2E8F0]">
+                      <div className="mt-0.5 p-1.5 rounded-lg bg-[#F4F6FA] border border-[#E2E8F0]">
                         {getIcon(notif.type)}
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <h4 className="text-xs font-semibold text-[#16202E] truncate">
-                            {notif.title}
-                          </h4>
-                          {!notif.read && (
-                            <span className="w-2 h-2 rounded-full bg-[#0A2E6D] shrink-0" />
-                          )}
+                          <h4 className="text-xs font-semibold text-[#16202E] truncate">{notif.title}</h4>
+                          {!notif.read && <span className="w-2 h-2 rounded-full bg-[#0A2E6D] shrink-0" />}
                         </div>
 
-                        <p className="text-xs text-[#5A6B82] line-clamp-2 leading-relaxed">
-                          {notif.message}
-                        </p>
+                        <p className="text-xs text-[#5A6B82] line-clamp-2 leading-relaxed">{notif.message}</p>
 
                         <div className="mt-2 flex items-center justify-between text-[11px] text-[#5A6B82]">
-                          {notif.buildingName && (
-                            <span className="font-medium text-[#5A6B82] flex items-center gap-1">
-                              <Building2 className="w-3 h-3 text-[#5A6B82]" />
-                              {notif.buildingName}
+                          {notif.buildingName ? (
+                            <span className="font-medium flex items-center gap-1 truncate">
+                              <Building2 className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{notif.buildingName}</span>
                             </span>
+                          ) : (
+                            <span />
                           )}
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-[#5A6B82]" />
-                            {new Date(notif.timestamp).toLocaleTimeString('es-ES', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                          <span className="flex items-center gap-1 shrink-0">
+                            <Clock className="w-3 h-3" />
+                            {formatNotifTime(notif.timestamp)}
                           </span>
                         </div>
                       </div>
@@ -199,9 +200,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
               )}
             </div>
 
-            {/* Drawer Footer */}
             <div className="p-3 bg-[#F4F6FA] border-t border-[#E2E8F0] text-center text-xs text-[#5A6B82]">
-              Las notificaciones push llegan instantáneamente a los roles correspondientes.
+              Al pulsar un aviso se marca como leído y, si aplica, abre la incidencia o el edificio.
             </div>
           </motion.div>
         </>

@@ -56,6 +56,7 @@ export const NeighborAccountEditModal: React.FC<NeighborAccountEditModalProps> =
   }, [neighbor, isOpen]);
 
   if (!isOpen || !neighbor) return null;
+  if (currentUser.role !== 'admin') return null;
 
   // Handler to adjust balance
   const applyBalanceAdjustment = (isAddition: boolean) => {
@@ -81,6 +82,7 @@ export const NeighborAccountEditModal: React.FC<NeighborAccountEditModalProps> =
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!neighbor) return;
+    if (currentUser.role !== 'admin') return;
 
     updateUser(neighbor.id, {
       feeBalance: Number(feeBalance),

@@ -25,7 +25,7 @@ export function remoteToNotification(row: RemoteNotification): PushNotification 
     ticketId: row.ticket_id || undefined,
     timestamp: row.created_at,
     read: Boolean(row.is_read),
-    targetRoles: (row.target_roles || ['admin']) as Role[],
+    targetRoles: (Array.isArray(row.target_roles) ? row.target_roles : ['admin']) as Role[],
   };
 }
 
@@ -62,4 +62,11 @@ export async function markInboxRead(id: string, read = true) {
   if (!supabase) return;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return;
   await supabase.from('app_notifications').update({ is_read: read }).eq('id', id);
+}
+
+export async function markInboxReadMany(ids: string[]) {
+  if (!supabase) return;
+  const uuids = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  if (!uuids.length) return;
+  await supabase.from('app_notifications').update({ is_read: true }).in('id', uuids);
 }

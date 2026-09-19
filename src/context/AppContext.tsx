@@ -12,10 +12,33 @@ import {
 } from '../data/initialData';
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isLastActiveAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
-import { fetchInbox, insertInbox, markInboxRead, remoteToNotification } from '../lib/inbox';
+import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
 import { clearRevocation, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, upsertProfile } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
+import {
+  isNotificationForUser,
+  loadReadNotificationIds,
+  mergeNotificationLists,
+  saveReadNotificationIds,
+  withLocalReads,
+} from '../utils/notifications';
+import {
+  canAssignWorkers,
+  canChargeRepairFund,
+  canCreateTicket,
+  canEditNeighborFees,
+  canManageBuildings,
+  canManagePayouts,
+  canManageSoferCatalog,
+  canManageUsers,
+  canPostAccounting,
+  canRequestSoferService,
+  canResetFinances,
+  canDeleteTickets,
+  canUpdateTicketStatus,
+  ticketBuildingForUser,
+} from '../utils/permissions';
 import type { Session } from '@supabase/supabase-js';
 import {
   Building,
@@ -156,6 +179,7 @@ interface AppContextType {
   workerPayouts: WorkerPayout[];
   addWorkerPayout: (data: Omit<WorkerPayout, 'id' | 'code'>) => WorkerPayout;
   updateWorkerPayoutStatus: (id: string, status: 'pagado' | 'pendiente', notes?: string) => void;
+  deleteWorkerPayout: (id: string) => void;
 
   neighborServices: NeighborService[];
   addNeighborService: (service: Omit<NeighborService, 'id'>) => void;
@@ -244,6 +268,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [users, currentUser]);
 
   const addUser = (userData: Omit<User, 'id'>): User => {
+    if (!canManageUsers(currentUser)) {
+      deny('Solo el administrador puede dar de alta usuarios.');
+      return currentUser;
+    }
     const newUser: User = {
       ...userData,
       id: `user-${Date.now()}`
@@ -256,6 +284,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateUser = (id: string, updates: Partial<User>) => {
     const target = users.find((u) => u.id === id);
+    if (!target) return;
+
+    if (!canEditNeighborFees(currentUser, target)) {
+      const isSelf =
+        currentUser.id === id ||
+        currentUser.email.trim().toLowerCase() === target.email.trim().toLowerCase();
+      if (!isSelf) {
+        deny('No puedes modificar la cuenta de otro usuario.');
+        return;
+      }
+      updates = {
+        phone: updates.phone,
+        name: updates.name,
+        avatar: updates.avatar,
+      };
+    }
+
     const newUsers = users.map((u) => (u.id === id || (target && u.email === target.email) ? { ...u, ...updates } : u));
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
@@ -289,6 +334,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       feeBalance?: number;
     }
   ) => {
+    if (!canManageUsers(currentUser)) {
+      deny('Solo el administrador puede asignar o cambiar roles.');
+      return;
+    }
     const targetUser = users.find((u) => u.id === id);
     const activeAdmins = users.filter((u) => u.role === 'admin' && u.status !== 'suspended');
 
@@ -385,6 +434,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleUserStatus = (id: string) => {
+    if (!canManageUsers(currentUser)) {
+      deny('Solo el administrador puede activar o suspender cuentas.');
+      return;
+    }
     const targetUser = users.find(u => u.id === id);
     if (!targetUser) return;
     if (isLastActiveAdmin(targetUser, users)) {
@@ -416,6 +469,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const revokeBuildingAssignment = (userId: string) => {
+    if (!canManageUsers(currentUser)) {
+      deny('Solo el administrador puede revocar asignaciones.');
+      return;
+    }
     const targetUser = users.find(u => u.id === userId);
     if (!targetUser) return;
 
@@ -440,6 +497,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteUser = (id: string) => {
+    if (!canManageUsers(currentUser)) {
+      deny('Solo el administrador puede eliminar cuentas.');
+      return;
+    }
     const userToDelete = users.find((u) => u.id === id);
     if (!userToDelete) return;
     if (isLastActiveAdmin(userToDelete, users)) {
@@ -472,6 +533,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const restoreAccess = async (email: string) => {
+    if (!canManageUsers(currentUser)) {
+      deny('Solo el administrador puede reactivar cuentas.');
+      return;
+    }
     const normalized = email.trim().toLowerCase();
     if (!normalized) return;
     await clearRevocation(normalized);
@@ -811,19 +876,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notifications, setNotifications] = useState<PushNotification[]>(() => {
     const saved = localStorage.getItem('gest_v2_notifications');
     const parsed: PushNotification[] = saved ? JSON.parse(saved) : [];
-    if (isSupabaseConfigured) {
-      return parsed.filter((n) => !/^notif-\d$/.test(n.id) && !n.message?.includes('Isabel Ferrer'));
-    }
-    return parsed.length ? parsed : INITIAL_NOTIFICATIONS;
+    const seed = isSupabaseConfigured
+      ? parsed.filter((n) => !/^notif-\d$/.test(n.id) && !n.message?.includes('Isabel Ferrer'))
+      : parsed.length
+      ? parsed
+      : INITIAL_NOTIFICATIONS;
+    const current = (() => {
+      try {
+        const raw = localStorage.getItem('gest_v2_current_user');
+        return raw ? (JSON.parse(raw) as { email?: string }) : null;
+      } catch {
+        return null;
+      }
+    })();
+    return withLocalReads(seed, loadReadNotificationIds(current?.email || ''));
   });
 
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gest_v2_notif_sound') !== 'off';
+    } catch {
+      return true;
+    }
+  });
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const currentRoleRef = useRef(currentUser.role);
   currentRoleRef.current = currentUser.role;
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
 
   // Sync to localStorage
   useEffect(() => {
@@ -857,6 +940,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('gest_v2_notifications', JSON.stringify(notifications));
   }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem('gest_v2_notif_sound', soundEnabled ? 'on' : 'off');
+  }, [soundEnabled]);
 
   // Request browser notification permissions on mount
   useEffect(() => {
@@ -904,6 +991,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 6000);
+  };
+
+  const deny = (message: string) => {
+    showToast('Permiso denegado', message, 'alert');
+    return true;
   };
 
   const publishNotification = (notif: PushNotification) => {
@@ -1043,39 +1135,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (!supabase) return;
-    void fetchInbox().then((items) => {
-      if (!items.length) return;
-      setNotifications((prev) => {
-        const known = new Set(prev.map((n) => n.id));
-        const extra = items.filter((n) => !known.has(n.id));
-        return extra.length ? [...extra, ...prev] : prev;
+
+    const pullInbox = () => {
+      void fetchInbox().then((items) => {
+        if (!items.length) return;
+        const readIds = loadReadNotificationIds(currentUser.email);
+        setNotifications((prev) => mergeNotificationLists(prev, items, readIds));
       });
-    });
+    };
+
+    pullInbox();
     const inboxChannel = supabase
       .channel('inbox-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'app_notifications' }, (payload) => {
-        const row = payload.new as {
-          id: string;
-          title: string;
-          message: string;
-          type: PushNotification['type'];
-          building_id: string | null;
-          building_name: string | null;
-          ticket_id: string | null;
-          created_at: string;
-          is_read: boolean | null;
-          target_roles: string[] | null;
-        };
-        const notif = remoteToNotification(row);
+        const notif = remoteToNotification(payload.new as Parameters<typeof remoteToNotification>[0]);
+        const readIds = loadReadNotificationIds(currentUserRef.current.email);
         let added = false;
         setNotifications((prev) => {
           if (prev.some((n) => n.id === notif.id || (n.title === notif.title && n.message === notif.message))) {
             return prev;
           }
           added = true;
-          return [notif, ...prev];
+          return withLocalReads([notif, ...prev], readIds);
         });
-        if (added && currentRoleRef.current === 'admin') {
+        if (added && isNotificationForUser(notif, currentUserRef.current)) {
           showToast(notif.title, notif.message, 'info');
         }
       })
@@ -1083,7 +1166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       void supabase.removeChannel(inboxChannel);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   const refreshDirectory = useCallback(async () => {
     const remote = await fetchProfiles();
@@ -1118,47 +1201,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    if (currentUser.role !== 'admin' && currentUser.role !== 'unassigned') return;
     const tick = () => {
-      void refreshDirectory();
-      if (currentUser.role !== 'admin') return;
+      if (currentUser.role === 'admin' || currentUser.role === 'unassigned') {
+        void refreshDirectory();
+      }
       void fetchInbox().then((items) => {
         if (!items.length) return;
-        setNotifications((prev) => {
-          const known = new Set(prev.map((n) => n.id));
-          const extra = items.filter((n) => !known.has(n.id));
-          return extra.length ? [...extra, ...prev] : prev;
-        });
+        const readIds = loadReadNotificationIds(currentUser.email);
+        setNotifications((prev) => mergeNotificationLists(prev, items, readIds));
       });
     };
+    tick();
     const id = window.setInterval(tick, 15000);
     return () => window.clearInterval(id);
-  }, [isAuthenticated, currentUser.role, refreshDirectory]);
+  }, [isAuthenticated, currentUser.role, currentUser.email, refreshDirectory]);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
   // Switch role handler
-  const switchRole = (role: Role, userId?: string) => {
-    let targetUser: User | undefined;
-    if (userId) {
-      targetUser = users.find((u) => u.id === userId);
-    } else {
-      targetUser = users.find((u) => u.role === role);
-    }
-
-    if (targetUser) {
-      setCurrentUser(targetUser);
-      setSelectedBuildingId(null);
-      setSelectedTicketId(null);
-      setActiveTab('dashboard');
-      showToast('Perfil Cambiado', `Ahora estás navegando como ${targetUser.name} (${targetUser.role.toUpperCase()})`, 'info');
-    }
+  const switchRole = (_role: Role, _userId?: string) => {
+    deny('No se puede suplantar otro rol. Cada usuario entra solo con el permiso que le asignó el administrador.');
   };
 
   // Building Actions
   const addBuilding = (buildingData: Omit<Building, 'id' | 'createdAt'>): Building => {
+    if (!canManageBuildings(currentUser)) {
+      deny('Solo el administrador puede registrar edificios.');
+      return { ...buildingData, id: '', createdAt: '' };
+    }
     const id = `bldg-${Date.now()}`;
     const newBuilding: Building = {
       ...buildingData,
@@ -1193,11 +1265,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateBuilding = (id: string, updates: Partial<Building>) => {
+    if (!canManageBuildings(currentUser)) {
+      deny('Solo el administrador puede editar edificios.');
+      return;
+    }
     setBuildings((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
     showToast('Edificio Actualizado', 'Los datos del inmueble han sido guardados.', 'success');
   };
 
   const deleteBuilding = (id: string) => {
+    if (!canManageBuildings(currentUser)) {
+      deny('Solo el administrador puede eliminar edificios.');
+      return;
+    }
     const bldg = buildings.find((b) => b.id === id);
     if (!bldg) return;
 
@@ -1207,6 +1287,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetBuildingOperations = (buildingId: string) => {
+    if (!canResetFinances(currentUser)) {
+      deny('Solo el administrador puede poner a cero balances e incidencias.');
+      return;
+    }
     const bldg = buildings.find((b) => b.id === buildingId);
     if (!bldg) return;
     setTransactions((prev) => prev.filter((t) => t.buildingId !== buildingId));
@@ -1228,6 +1312,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetAllOperations = () => {
+    if (!canResetFinances(currentUser)) {
+      deny('Solo el administrador puede vaciar todos los balances.');
+      return;
+    }
     setTransactions([]);
     setTickets([]);
     setNeighborRequests([]);
@@ -1243,9 +1331,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const getBuildingById = (id: string) => buildings.find((b) => b.id === id);
+  const getBuildingById = (id: string) => {
+    const bldg = buildings.find((b) => b.id === id);
+    if (!bldg) return undefined;
+    if (currentUser.role === 'admin' || currentUser.role === 'worker') return bldg;
+    if (currentUser.role === 'president' && (bldg.id === currentUser.buildingId || bldg.presidentId === currentUser.id)) {
+      return bldg;
+    }
+    return undefined;
+  };
 
   const adjustBuildingRepairFund = (buildingId: string, newAmount: number, reason: string) => {
+    if (!canManageBuildings(currentUser)) {
+      deny('Solo el administrador puede ajustar la caja de reparaciones desde el panel.');
+      return;
+    }
     setBuildings((prev) =>
       prev.map((b) => (b.id === buildingId ? { ...b, repairFund: newAmount } : b))
     );
@@ -1483,6 +1583,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     buildingId: string,
     expenseData: Omit<ExceptionalExpense, 'id' | 'createdAt' | 'status'>
   ) => {
+    if (!canManageBuildings(currentUser)) {
+      deny('Solo el administrador puede registrar gastos excepcionales.');
+      return;
+    }
     const newExpense: ExceptionalExpense = {
       ...expenseData,
       id: `exe-${Date.now()}`,
@@ -1506,6 +1610,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     expenseId: string,
     paymentMethod: Transaction['paymentMethod'] = 'transferencia'
   ) => {
+    if (!canManageBuildings(currentUser)) {
+      deny('Solo el administrador puede marcar gastos excepcionales como pagados.');
+      return;
+    }
     const bldg = buildings.find((b) => b.id === buildingId);
     if (!bldg) return;
     const expense = (bldg.exceptionalExpenses || []).find((e) => e.id === expenseId);
@@ -1553,6 +1661,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const removeExceptionalExpense = (buildingId: string, expenseId: string) => {
+    if (!canManageBuildings(currentUser)) {
+      deny('Solo el administrador puede eliminar gastos excepcionales.');
+      return;
+    }
     setBuildings((prev) =>
       prev.map((b) => {
         if (b.id !== buildingId) return b;
@@ -1575,6 +1687,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     priority: TicketPriority;
     photos?: string[];
   }): Ticket => {
+    if (!canCreateTicket(currentUser)) {
+      deny('Tu rol no puede crear incidencias.');
+      return tickets[0] as Ticket;
+    }
+    if ((currentUser.role === 'neighbor' || currentUser.role === 'president') && !currentUser.buildingId) {
+      deny('No tienes un edificio asignado.');
+      return tickets[0] as Ticket;
+    }
+    data = { ...data, buildingId: ticketBuildingForUser(currentUser, data.buildingId) };
     const bldg = buildings.find((b) => b.id === data.buildingId);
     const count = tickets.length + 1;
     const ticketNumber = `TCK-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`;
@@ -1607,7 +1728,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           authorId: currentUser.id,
           authorName: currentUser.name,
           authorRole: currentUser.role,
-          action: `Incidencia reportada por ${currentUser.name} (Presidente)`,
+          action: `Incidencia reportada por ${currentUser.name}`,
           notes: data.description,
           statusFrom: undefined,
           statusTo: 'pendiente',
@@ -1618,7 +1739,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTickets((prev) => [newTicket, ...prev]);
 
     // Real-time Push Notification
-    const notifTitle = data.priority === 'urgente' ? '🚨 INCIDENCIA URGENTE' : '📋 Nuevo Incidencia de Incidencia';
+    const notifTitle = data.priority === 'urgente' ? '🚨 INCIDENCIA URGENTE' : '📋 Nueva incidencia';
     const notifMsg = `En ${newTicket.buildingName} (Piso ${newTicket.floor}, ${newTicket.unitOrArea}): "${newTicket.title}"`;
 
     const notif: PushNotification = {
@@ -1631,7 +1752,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ticketId: newTicket.id,
       timestamp: new Date().toISOString(),
       read: false,
-      targetRoles: ['admin', 'worker'],
+      targetRoles: ['admin', 'worker', 'president'],
     };
 
     publishNotification(notif);
@@ -1648,6 +1769,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const targetTicket = tickets.find((t) => t.id === ticketId);
     if (!targetTicket) return;
+    if (!canUpdateTicketStatus(currentUser, targetTicket)) {
+      deny('No puedes cambiar el estado de esta incidencia.');
+      return;
+    }
 
     const oldStatus = targetTicket.status;
     const now = new Date().toISOString();
@@ -1708,7 +1833,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ticketId: targetTicket.id,
       timestamp: now,
       read: false,
-      targetRoles: ['admin', 'president'],
+      targetRoles: ['admin', 'president', 'worker'],
     };
 
     publishNotification(notif);
@@ -1716,9 +1841,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const assignWorkerToTicket = (ticketId: string, workerId: string) => {
-    const worker = users.find((u) => u.id === workerId);
+    if (!canAssignWorkers(currentUser)) {
+      deny('Solo el administrador puede asignar operarios.');
+      return;
+    }
     const targetTicket = tickets.find((t) => t.id === ticketId);
-    if (!worker || !targetTicket) return;
+    if (!targetTicket) return;
+    const workerUser = users.find((u) => u.id === workerId);
+    const payoutWorker = workerPayouts.find((p) => p.workerId === workerId || p.workerName === workerId);
+    const name = workerUser?.name || payoutWorker?.workerName;
+    if (!name) return;
+    const specialty = workerUser?.specialty || payoutWorker?.workerSpecialty;
+    const assignedId = workerUser?.id || payoutWorker?.workerId || workerId;
 
     const now = new Date().toISOString();
     const timelineEvent = {
@@ -1727,7 +1861,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authorId: currentUser.id,
       authorName: currentUser.name,
       authorRole: currentUser.role,
-      action: `Ticket asignado al operario ${worker.name} (${worker.specialty || 'Trabajador'})`,
+      action: `Ticket asignado al operario ${name}${specialty ? ` (${specialty})` : ''}`,
     };
 
     setTickets((prev) =>
@@ -1735,9 +1869,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         t.id === ticketId
           ? {
               ...t,
-              assignedWorkerId: worker.id,
-              assignedWorkerName: worker.name,
-              assignedWorkerSpecialty: worker.specialty,
+              assignedWorkerId: assignedId,
+              assignedWorkerName: name,
+              assignedWorkerSpecialty: specialty,
               updatedAt: now,
               timeline: [...t.timeline, timelineEvent],
             }
@@ -1748,7 +1882,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const notif: PushNotification = {
       id: crypto.randomUUID(),
       title: '🛠️ Ticket Asignado a Trabajador',
-      message: `Se asignó el ticket ${targetTicket.ticketNumber} a ${worker.name}.`,
+      message: `Se asignó el ticket ${targetTicket.ticketNumber} a ${name}.`,
       type: 'ticket_status',
       buildingId: targetTicket.buildingId,
       buildingName: targetTicket.buildingName,
@@ -1758,7 +1892,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetRoles: ['admin', 'worker', 'president'],
     };
     publishNotification(notif);
-    showToast('Trabajador Asignado', `${worker.name} ha sido asignado a la incidencia ${targetTicket.ticketNumber}.`, 'success');
+    showToast('Trabajador Asignado', `${name} ha sido asignado a la incidencia ${targetTicket.ticketNumber}.`, 'success');
   };
 
   const updateTicketDetails = (ticketId: string, updates: Partial<Ticket>) => {
@@ -1768,6 +1902,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteTicket = (ticketId: string) => {
+    if (!canDeleteTickets(currentUser)) {
+      deny('Solo el administrador puede eliminar incidencias.');
+      return;
+    }
     const target = tickets.find((t) => t.id === ticketId);
     setTickets((prev) => prev.filter((t) => t.id !== ticketId));
     if (selectedTicketId === ticketId) setSelectedTicketId(null);
@@ -1784,6 +1922,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }) => {
     const targetTicket = tickets.find((t) => t.id === data.ticketId);
     if (!targetTicket) return;
+    if (!canChargeRepairFund(currentUser, targetTicket)) {
+      deny('No puedes registrar costes en esta incidencia.');
+      return;
+    }
 
     const totalCharged = Number(data.serviceCost) + Number(data.materialsCost);
     const now = new Date().toISOString();
@@ -1874,6 +2016,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }) => {
     const targetTicket = tickets.find((t) => t.id === data.ticketId);
     if (!targetTicket) return;
+    if (!canChargeRepairFund(currentUser, targetTicket)) {
+      deny('No puedes cargar gastos a la caja de esta incidencia.');
+      return;
+    }
 
     const bldg = buildings.find((b) => b.id === targetTicket.buildingId);
     const now = new Date().toISOString();
@@ -2009,6 +2155,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Worker Payout Actions (Admin Exclusive)
   const addWorkerPayout = (data: Omit<WorkerPayout, 'id' | 'code'>): WorkerPayout => {
+    if (!canManagePayouts(currentUser)) {
+      deny('Solo el administrador puede registrar nóminas.');
+      return workerPayouts[0] as WorkerPayout;
+    }
     const code = `PAY-${new Date().getFullYear()}-${String(workerPayouts.length + 1).padStart(3, '0')}`;
     const newPayout: WorkerPayout = {
       ...data,
@@ -2062,6 +2212,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateWorkerPayoutStatus = (id: string, status: 'pagado' | 'pendiente', notes?: string) => {
+    if (!canManagePayouts(currentUser)) {
+      deny('Solo el administrador puede cambiar el estado de una nómina.');
+      return;
+    }
     setWorkerPayouts((prev) =>
       prev.map((p) => (p.id === id ? { ...p, status, notes: notes || p.notes } : p))
     );
@@ -2072,8 +2226,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const deleteWorkerPayout = (id: string) => {
+    if (!canManagePayouts(currentUser)) {
+      deny('Solo el administrador puede eliminar nóminas.');
+      return;
+    }
+    const target = workerPayouts.find((p) => p.id === id);
+    setWorkerPayouts((prev) => prev.filter((p) => p.id !== id));
+    showToast(
+      'Nómina eliminada',
+      target ? `Se eliminó ${target.code} de ${target.workerName}.` : 'El pago fue eliminado.',
+      'alert'
+    );
+  };
+
   // Neighbor Services Actions
   const addNeighborService = (data: Omit<NeighborService, 'id'>) => {
+    if (!canManageSoferCatalog(currentUser)) {
+      deny('Solo el administrador puede añadir servicios SOFER.');
+      return;
+    }
     const newService: NeighborService = {
       ...data,
       id: `ns-${Date.now()}`,
@@ -2082,16 +2254,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateNeighborService = (id: string, updates: Partial<NeighborService>) => {
+    if (!canManageSoferCatalog(currentUser)) {
+      deny('Solo el administrador puede modificar el catálogo SOFER.');
+      return;
+    }
     setNeighborServices((prev) =>
       prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
     );
   };
 
   const removeNeighborService = (id: string) => {
+    if (!canManageSoferCatalog(currentUser)) {
+      deny('Solo el administrador puede eliminar servicios SOFER.');
+      return;
+    }
     setNeighborServices((prev) => prev.filter((s) => s.id !== id));
   };
 
   const createNeighborRequest = (data: Omit<NeighborServiceRequest, 'id' | 'createdAt' | 'status'>) => {
+    if (!canRequestSoferService(currentUser)) {
+      deny('Solo vecinos y presidentes pueden solicitar servicios SOFER.');
+      return;
+    }
+    data = {
+      ...data,
+      neighborId: currentUser.id,
+      neighborName: currentUser.name,
+      buildingId: currentUser.buildingId || data.buildingId,
+      unitOrArea: currentUser.unitOrArea || data.unitOrArea,
+    };
     const newRequest: NeighborServiceRequest = {
       ...data,
       id: `nsr-${Date.now()}`,
@@ -2142,12 +2333,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteNeighborRequest = (id: string) => {
+    if (!canManageSoferCatalog(currentUser)) {
+      deny('Solo el administrador puede eliminar solicitudes de servicio.');
+      return;
+    }
     setNeighborRequests((prev) => prev.filter((r) => r.id !== id));
     showToast('Solicitud eliminada', 'La solicitud de servicio fue borrada.', 'alert');
   };
 
   // Transaction Actions
   const addTransaction = (data: Omit<Transaction, 'id' | 'code'>): Transaction => {
+    if (!canPostAccounting(currentUser)) {
+      deny('Solo el administrador puede asentar movimientos contables.');
+      return { ...data, id: '', code: '' };
+    }
     const codePrefix = data.type === 'ingreso' ? 'ING' : 'GST';
     const code = `${codePrefix}-${new Date().getFullYear()}-${String(transactions.length + 1).padStart(3, '0')}`;
     const newTx: Transaction = {
@@ -2177,48 +2376,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteTransaction = (id: string) => {
+    if (!canPostAccounting(currentUser)) {
+      deny('Solo el administrador puede eliminar asientos.');
+      return;
+    }
     setTransactions((prev) => prev.filter((t) => t.id !== id));
     showToast('Movimiento Eliminado', 'La transacción fue eliminada del libro contable.', 'info');
   };
 
   // Notifications
   const markNotificationAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, ...{ read: true } } : n)));
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    const ids = [...loadReadNotificationIds(currentUser.email), id];
+    saveReadNotificationIds(currentUser.email, ids);
     void markInboxRead(id, true);
   };
 
   const markAllNotificationsAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    const visible = notifications.filter((n) => isNotificationForUser(n, currentUser));
+    const ids = visible.map((n) => n.id);
+    setNotifications((prev) =>
+      prev.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n))
+    );
+    saveReadNotificationIds(currentUser.email, [...loadReadNotificationIds(currentUser.email), ...ids]);
+    void markInboxReadMany(ids);
   };
 
   const unreadCount = useMemo(() => {
-    return notifications.filter((n) => !n.read && n.targetRoles.includes(currentUser.role)).length;
-  }, [notifications, currentUser.role]);
+    return notifications.filter((n) => !n.read && isNotificationForUser(n, currentUser)).length;
+  }, [notifications, currentUser]);
 
   // Role-Scoped Data Filtering
   const accessibleBuildings = useMemo(() => {
-    if (currentUser.role === 'admin') {
+    if (currentUser.role === 'admin' || currentUser.role === 'worker') {
       return buildings;
     }
-    if (currentUser.role === 'president') {
+    if (currentUser.role === 'president' || currentUser.role === 'neighbor') {
       return buildings.filter((b) => b.id === currentUser.buildingId || b.presidentId === currentUser.id);
     }
-    // Worker can see all buildings to know locations
-    return buildings;
+    return [];
   }, [currentUser, buildings]);
 
   const accessibleTickets = useMemo(() => {
-    if (currentUser.role === 'admin') {
+    if (currentUser.role === 'admin' || currentUser.role === 'worker') {
       return tickets;
     }
-    if (currentUser.role === 'president') {
+    if (currentUser.role === 'president' || currentUser.role === 'neighbor') {
       return tickets.filter((t) => t.buildingId === currentUser.buildingId || t.createdBy.id === currentUser.id);
     }
-    if (currentUser.role === 'worker') {
-      // Worker sees tickets assigned to them or unassigned/open in general
-      return tickets;
-    }
-    return tickets;
+    return [];
   }, [currentUser, tickets]);
 
   const accessibleTransactions = useMemo(() => {
@@ -2229,16 +2435,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return transactions.filter((t) => t.buildingId === currentUser.buildingId);
     }
     if (currentUser.role === 'worker') {
-      return transactions.filter((t) => t.registeredBy === currentUser.name || t.category === 'servicio_reparacion' || t.category === 'honorarios_tecnicos');
+      return transactions.filter(
+        (t) =>
+          t.registeredBy === currentUser.name ||
+          t.category === 'servicio_reparacion'
+      );
     }
-    return transactions;
+    return [];
   }, [currentUser, transactions]);
+
+  const visibleUsers = useMemo(() => {
+    if (currentUser.role === 'admin') return users;
+    if (currentUser.role === 'president') {
+      return users.filter(
+        (u) =>
+          u.id === currentUser.id ||
+          u.buildingId === currentUser.buildingId ||
+          u.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()
+      );
+    }
+    return users.filter(
+      (u) =>
+        u.id === currentUser.id ||
+        u.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()
+    );
+  }, [currentUser, users]);
 
   return (
     <AppContext.Provider
       value={{
         currentUser,
-        allUsers: users,
+        allUsers: visibleUsers,
         refreshDirectory,
         isAuthenticated,
         authReady,
@@ -2257,7 +2484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         signInWithGoogleCredential,
         registerUser,
         logout,
-        buildings,
+        buildings: accessibleBuildings,
         addBuilding,
         updateBuilding,
         deleteBuilding,
@@ -2275,7 +2502,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExceptionalExpense,
         markExceptionalExpenseAsPaid,
         removeExceptionalExpense,
-        tickets,
+        tickets: accessibleTickets,
         createTicket,
         updateTicketStatus,
         assignWorkerToTicket,
@@ -2283,12 +2510,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteTicket,
         registerServiceAccounting,
         addRepairExpenseToTicket,
-        transactions,
+        transactions: accessibleTransactions,
         addTransaction,
         deleteTransaction,
         workerPayouts,
         addWorkerPayout,
         updateWorkerPayoutStatus,
+        deleteWorkerPayout,
         neighborServices,
         addNeighborService,
         updateNeighborService,
