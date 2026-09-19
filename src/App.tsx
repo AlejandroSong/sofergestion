@@ -16,6 +16,7 @@ import { AddTransactionModal } from './components/AddTransactionModal';
 import { ReportsModal } from './components/ReportsModal';
 import { SoferServicesModal } from './components/SoferServicesModal';
 import { UserManagementModal } from './components/UserManagementModal';
+import { AdminControlPanel } from './components/AdminControlPanel';
 import { canOpenBuilding, canOpenReports, canManageBuildings, canPostAccounting, canManageSoferCatalog, canCreateTicket, canManageUsers } from './utils/permissions';
 
 const MainAppContent: React.FC = () => {
@@ -41,6 +42,7 @@ const MainAppContent: React.FC = () => {
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isSoferOpen, setIsSoferOpen] = useState(false);
   const [isUsersOpen, setIsUsersOpen] = useState(false);
+  const [isControlOpen, setIsControlOpen] = useState(false);
 
   useEffect(() => {
     if (adminInboxTarget?.type === 'sofer' && canManageSoferCatalog(currentUser)) {
@@ -106,6 +108,9 @@ const MainAppContent: React.FC = () => {
         onOpenSoferServices={() => {
           if (canManageSoferCatalog(currentUser)) setIsSoferOpen(true);
         }}
+        onOpenControlPanel={() => {
+          if (currentUser.role === 'admin') setIsControlOpen(true);
+        }}
       />
 
       {/* Main Content Area */}
@@ -125,6 +130,7 @@ const MainAppContent: React.FC = () => {
             onOpenAddTransaction={() => setIsAddTransactionOpen(true)}
             onOpenReports={() => setIsReportsOpen(true)}
             onOpenSoferServices={() => setIsSoferOpen(true)}
+            onOpenControlPanel={() => setIsControlOpen(true)}
           />
         ) : currentUser.role === 'worker' ? (
           <WorkerDashboard />
@@ -200,6 +206,11 @@ const MainAppContent: React.FC = () => {
           setIsUsersOpen(false);
           if (adminInboxTarget?.type === 'users') setAdminInboxTarget(null);
         }}
+      />
+
+      <AdminControlPanel
+        isOpen={isControlOpen && currentUser.role === 'admin'}
+        onClose={() => setIsControlOpen(false)}
       />
 
       {/* Footer */}

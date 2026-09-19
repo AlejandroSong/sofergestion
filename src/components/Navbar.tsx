@@ -12,6 +12,7 @@ import {
   UserCheck,
   Home,
   Sparkles,
+  Settings2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { RoleSwitcher } from './RoleSwitcher';
@@ -23,9 +24,10 @@ interface NavbarProps {
   onOpenCreateTicket: () => void;
   onOpenAddBuilding: () => void;
   onOpenSoferServices?: () => void;
+  onOpenControlPanel?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBuilding, onOpenReports, onOpenSoferServices }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBuilding, onOpenReports, onOpenSoferServices, onOpenControlPanel }) => {
   const {
     currentUser,
     unreadCount,
@@ -188,6 +190,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Context Action Buttons */}
               
+
+              {currentUser.role === 'admin' && onOpenControlPanel && (
+                <button
+                  type="button"
+                  onClick={onOpenControlPanel}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-[#0A2E6D] text-xs font-bold shadow-xs hover:bg-blue-50 transition-colors cursor-pointer"
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                  Precios y roles
+                </button>
+              )}
 
               {currentUser.role === 'admin' && (
                 <button

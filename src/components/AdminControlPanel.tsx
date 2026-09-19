@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Building2, Euro, Plus, Save, Settings2, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Role } from '../types';
@@ -179,9 +180,17 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
     </button>
   );
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60">
-      <div className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[#E2E8F0] shadow-2xl p-4 space-y-3">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[#E2E8F0] shadow-2xl p-4 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-bold text-[#16202E] flex items-center gap-2">
             <Settings2 className="w-4 h-4 text-[#0A2E6D]" />
@@ -479,6 +488,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
