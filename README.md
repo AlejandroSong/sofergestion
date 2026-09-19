@@ -42,6 +42,6 @@ Orígenes de JavaScript y URIs de redirección:
 
 ## Supabase
 
-En el SQL Editor ejecuta **todo** `supabase/profiles.sql`.
+En el SQL Editor ejecuta **todo** `supabase/profiles.sql` (incluye `app_shared` para que fincas, incidencias y catálogo se vean en todos los dispositivos al momento).
 
 Site URL de Auth = `https://sofergestion.es`.

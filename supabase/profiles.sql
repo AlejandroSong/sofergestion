@@ -220,6 +220,43 @@ begin
   end;
 end $$;
 
+create table if not exists public.app_shared (
+  key text primary key,
+  payload jsonb not null default '[]'::jsonb,
+  updated_at timestamptz default now()
+);
+
+alter table public.app_shared enable row level security;
+
+drop policy if exists "app_shared_select" on public.app_shared;
+create policy "app_shared_select"
+  on public.app_shared for select to authenticated
+  using (true);
+
+drop policy if exists "app_shared_insert" on public.app_shared;
+create policy "app_shared_insert"
+  on public.app_shared for insert to authenticated
+  with check (true);
+
+drop policy if exists "app_shared_update" on public.app_shared;
+create policy "app_shared_update"
+  on public.app_shared for update to authenticated
+  using (true)
+  with check (true);
+
+alter table public.app_shared replica identity full;
+
+grant select, insert, update on public.app_shared to authenticated;
+
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.app_shared;
+  exception when duplicate_object then
+    null;
+  end;
+end $$;
+
 create or replace function public.on_profile_access_request()
 returns trigger
 language plpgsql

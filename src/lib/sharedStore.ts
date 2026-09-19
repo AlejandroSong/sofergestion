@@ -1,0 +1,67 @@
+import { supabase } from './supabase';
+
+export type SharedKey =
+  | 'buildings'
+  | 'tickets'
+  | 'transactions'
+  | 'worker_payouts'
+  | 'neighbor_services'
+  | 'neighbor_requests';
+
+export const SHARED_KEYS: SharedKey[] = [
+  'buildings',
+  'tickets',
+  'transactions',
+  'worker_payouts',
+  'neighbor_services',
+  'neighbor_requests',
+];
+
+export function stableJson(value: unknown) {
+  return JSON.stringify(value);
+}
+
+export async function fetchSharedMap(): Promise<Partial<Record<SharedKey, unknown[]>>> {
+  if (!supabase) return {};
+  const { data, error } = await supabase.from('app_shared').select('key, payload');
+  if (error || !data) return {};
+  const map: Partial<Record<SharedKey, unknown[]>> = {};
+  for (const row of data as { key: SharedKey; payload: unknown }[]) {
+    if (SHARED_KEYS.includes(row.key) && Array.isArray(row.payload)) {
+      map[row.key] = row.payload;
+    }
+  }
+  return map;
+}
+
+export async function saveShared(key: SharedKey, payload: unknown[]) {
+  if (!supabase) return;
+  const { error } = await supabase.from('app_shared').upsert(
+    {
+      key,
+      payload,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' }
+  );
+  if (error) {
+    console.warn('No se pudo sincronizar', key, error.message);
+  }
+}
+
+export function subscribeShared(
+  onChange: (key: SharedKey, payload: unknown[]) => void
+): () => void {
+  if (!supabase) return () => undefined;
+  const channel = supabase
+    .channel('app-shared-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_shared' }, (payload) => {
+      const row = (payload.new || payload.old) as { key?: SharedKey; payload?: unknown } | undefined;
+      if (!row?.key || !SHARED_KEYS.includes(row.key) || !Array.isArray(row.payload)) return;
+      onChange(row.key, row.payload);
+    })
+    .subscribe();
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}

@@ -13,6 +13,7 @@ import {
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isLastActiveAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
+import { fetchSharedMap, saveShared, subscribeShared, stableJson, SHARED_KEYS, type SharedKey } from '../lib/sharedStore';
 import { clearRevocation, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, upsertProfile } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
@@ -995,6 +996,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   currentRoleRef.current = currentUser.role;
   const currentUserRef = useRef(currentUser);
   currentUserRef.current = currentUser;
+  const sharedReadyRef = useRef(false);
+  const lastSharedJsonRef = useRef<Partial<Record<SharedKey, string>>>({});
+  const buildingsRef = useRef(buildings);
+  buildingsRef.current = buildings;
+  const ticketsRef = useRef(tickets);
+  ticketsRef.current = tickets;
+  const transactionsRef = useRef(transactions);
+  transactionsRef.current = transactions;
+  const workerPayoutsRef = useRef(workerPayouts);
+  workerPayoutsRef.current = workerPayouts;
+  const neighborServicesRef = useRef(neighborServices);
+  neighborServicesRef.current = neighborServices;
+  const neighborRequestsRef = useRef(neighborRequests);
+  neighborRequestsRef.current = neighborRequests;
+
+  const applySharedPayload = (key: SharedKey, payload: unknown[]) => {
+    const json = stableJson(payload);
+    if (lastSharedJsonRef.current[key] === json) return;
+    lastSharedJsonRef.current[key] = json;
+    switch (key) {
+      case 'buildings':
+        setBuildings(stripDemoBuildings(payload as Building[]));
+        break;
+      case 'tickets':
+        setTickets(stripDemoTickets(payload as Ticket[]));
+        break;
+      case 'transactions':
+        setTransactions(stripDemoTransactions(payload as Transaction[]));
+        break;
+      case 'worker_payouts':
+        setWorkerPayouts(stripDemoPayouts(payload as WorkerPayout[]));
+        break;
+      case 'neighbor_services':
+        setNeighborServices(payload as NeighborService[]);
+        break;
+      case 'neighbor_requests':
+        setNeighborRequests(stripDemoRequests(payload as NeighborServiceRequest[]));
+        break;
+    }
+  };
+
+  const pushSharedPayload = (key: SharedKey, payload: unknown[]) => {
+    if (!sharedReadyRef.current) return;
+    const json = stableJson(payload);
+    if (lastSharedJsonRef.current[key] === json) return;
+    if (payload.length === 0 && lastSharedJsonRef.current[key] === undefined) return;
+    lastSharedJsonRef.current[key] = json;
+    void saveShared(key, payload);
+  };
+
+  const localSharedFor = (key: SharedKey): unknown[] => {
+    switch (key) {
+      case 'buildings':
+        return buildingsRef.current;
+      case 'tickets':
+        return ticketsRef.current;
+      case 'transactions':
+        return transactionsRef.current;
+      case 'worker_payouts':
+        return workerPayoutsRef.current;
+      case 'neighbor_services':
+        return neighborServicesRef.current;
+      case 'neighbor_requests':
+        return neighborRequestsRef.current;
+    }
+  };
 
   // Sync to localStorage
   useEffect(() => {
@@ -1003,26 +1070,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     localStorage.setItem('gest_v2_buildings', JSON.stringify(buildings));
+    pushSharedPayload('buildings', buildings);
   }, [buildings]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_tickets', JSON.stringify(tickets));
+    pushSharedPayload('tickets', tickets);
   }, [tickets]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_transactions', JSON.stringify(transactions));
+    pushSharedPayload('transactions', transactions);
   }, [transactions]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_worker_payouts', JSON.stringify(workerPayouts));
+    pushSharedPayload('worker_payouts', workerPayouts);
   }, [workerPayouts]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_neighbor_services', JSON.stringify(neighborServices));
+    pushSharedPayload('neighbor_services', neighborServices);
   }, [neighborServices]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_neighbor_requests', JSON.stringify(neighborRequests));
+    pushSharedPayload('neighbor_requests', neighborRequests);
   }, [neighborRequests]);
 
   useEffect(() => {
@@ -1264,6 +1337,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!supabase || !isAuthenticated) {
+      sharedReadyRef.current = false;
+      return;
+    }
+    let cancelled = false;
+    const hydrate = async () => {
+      const remote = await fetchSharedMap();
+      if (cancelled) return;
+      for (const key of SHARED_KEYS) {
+        const remotePayload = remote[key];
+        if (remotePayload) {
+          applySharedPayload(key, remotePayload);
+        } else {
+          const local = localSharedFor(key);
+          if (local.length > 0) {
+            lastSharedJsonRef.current[key] = stableJson(local);
+            void saveShared(key, local);
+          }
+        }
+      }
+      sharedReadyRef.current = true;
+    };
+    void hydrate();
+    const stop = subscribeShared((key, payload) => {
+      if (!cancelled) applySharedPayload(key, payload);
+    });
+    return () => {
+      cancelled = true;
+      sharedReadyRef.current = false;
+      stop();
+    };
+  }, [isAuthenticated]);
+
   const refreshDirectory = useCallback(async () => {
     const remote = await fetchProfiles();
     if (!remote.length) return;
@@ -1306,6 +1413,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const readIds = loadReadNotificationIds(currentUser.email);
         setNotifications((prev) => mergeNotificationLists(prev, items, readIds));
       });
+      void fetchSharedMap().then((remote) => {
+        SHARED_KEYS.forEach((key) => {
+          const payload = remote[key];
+          if (payload) applySharedPayload(key, payload);
+        });
+      });
     };
     tick();
     const id = window.setInterval(tick, 15000);
@@ -1337,7 +1450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setBuildings((prev) => [newBuilding, ...prev]);
 
-    // Push notification for Admin
+    // Aviso a todos los roles: la finca ya está en el listado compartido.
     const notif: PushNotification = {
       id: crypto.randomUUID(),
       title: '🏢 Nuevo Edificio Añadido',
@@ -1347,7 +1460,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       buildingName: newBuilding.name,
       timestamp: new Date().toISOString(),
       read: false,
-      targetRoles: ['admin'],
+      targetRoles: ['admin', 'president', 'worker', 'neighbor'],
     };
     publishNotification(notif);
     showToast('Edificio Registrado', `Se agregó exitosamente "${newBuilding.name}" al catálogo.`, 'success');
