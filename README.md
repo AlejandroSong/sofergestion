@@ -36,7 +36,7 @@ npm run mobile:android
 
 Se abre **Android Studio**. Ahí: un emulador o un móvil por USB → Run.
 
-**iOS:** la carpeta `ios/` se genera también aquí, pero **compilar y subir a App Store hace falta un Mac con Xcode**. En el Mac, en esta misma carpeta:
+**iOS:** la carpeta `ios/` ya está en el repo (mismo `appId` que Android: `es.sofergestion.app`). **Firmar y subir a App Store hace falta un Mac con Xcode** y certificados en Appflow. En el Mac, en esta misma carpeta:
 
 ```bash
 npm install
