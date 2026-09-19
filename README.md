@@ -22,6 +22,32 @@ En Vercel, **Deployment Protection → Vercel Authentication** debe estar apagad
 - Notificaciones, vivienda, calendario de visitas y catálogo SOFER.
 - Arranque **sin fincas de demostración**: el administrador registra las comunidades reales.
 
+## Apps Android e iOS (mismo proyecto)
+
+No hace falta un repo nuevo. Capacitor envuelve esta web: las carpetas `android/` e `iOS/` viven aquí.
+
+**Una vez en este PC (Windows):**
+
+```bash
+npm install
+npm run mobile:sync
+npm run mobile:android
+```
+
+Se abre **Android Studio**. Ahí: un emulador o un móvil por USB → Run.
+
+**iOS:** la carpeta `ios/` se genera también aquí, pero **compilar y subir a App Store hace falta un Mac con Xcode**. En el Mac, en esta misma carpeta:
+
+```bash
+npm install
+npm run mobile:ios
+```
+
+**Google (imprescindible para el login en el móvil):** en Google Cloud → cliente Web, añade origen y URI de redirección:
+
+- `https://localhost`
+- `https://localhost/google-callback.html`
+
 ## Local
 
 ```bash

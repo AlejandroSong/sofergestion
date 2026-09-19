@@ -2,29 +2,60 @@ import { DEFAULT_GOOGLE_CLIENT_ID, googleRedirectUri } from './authConfig';
 
 export const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
 
-export function requestGoogleIdToken(clientId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const redirectUri = googleRedirectUri();
-    const nonce = crypto.randomUUID();
-    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    url.searchParams.set('client_id', clientId);
-    url.searchParams.set('response_type', 'id_token');
-    url.searchParams.set('scope', 'openid email profile');
-    url.searchParams.set('redirect_uri', redirectUri);
-    url.searchParams.set('nonce', nonce);
-    url.searchParams.set('prompt', 'select_account');
+const TOKEN_KEY = 'sofer-google-id-token';
+const ERROR_KEY = 'sofer-google-id-error';
 
+export function isNativeShell(): boolean {
+  const cap = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return Boolean(cap?.isNativePlatform?.());
+}
+
+export function googleAuthUrl(clientId: string): string {
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('response_type', 'id_token');
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('redirect_uri', googleRedirectUri());
+  url.searchParams.set('nonce', crypto.randomUUID());
+  url.searchParams.set('prompt', 'select_account');
+  return url.toString();
+}
+
+export function consumeGoogleRedirectResult(): { idToken?: string; error?: string } {
+  try {
+    const idToken = sessionStorage.getItem(TOKEN_KEY) || undefined;
+    const error = sessionStorage.getItem(ERROR_KEY) || undefined;
+    if (idToken) sessionStorage.removeItem(TOKEN_KEY);
+    if (error) sessionStorage.removeItem(ERROR_KEY);
+    return { idToken, error };
+  } catch {
+    return {};
+  }
+}
+
+export function startGoogleRedirect(clientId: string) {
+  window.location.assign(googleAuthUrl(clientId));
+}
+
+export function requestGoogleIdToken(clientId: string): Promise<string> {
+  if (isNativeShell()) {
+    startGoogleRedirect(clientId);
+    return new Promise(() => undefined);
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = googleAuthUrl(clientId);
     const width = 500;
     const height = 640;
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
     const popup = window.open(
-      url.toString(),
+      url,
       'google-oauth',
       `popup=yes,width=${width},height=${height},left=${left},top=${top}`
     );
     if (!popup) {
-      reject(new Error('El navegador bloqueó la ventana de Google. Permite ventanas emergentes.'));
+      startGoogleRedirect(clientId);
       return;
     }
 
