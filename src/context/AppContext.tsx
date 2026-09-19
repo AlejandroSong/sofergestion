@@ -1482,7 +1482,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo el administrador puede editar edificios.');
       return;
     }
-    setBuildings((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    setBuildings((prev) => {
+      const next = prev.map((b) => (b.id === id ? { ...b, ...updates } : b));
+      buildingsRef.current = next;
+      flushSharedNow('buildings', next);
+      return next;
+    });
     showToast('Edificio Actualizado', 'Los datos del inmueble han sido guardados.', 'success');
   };
 
@@ -2660,7 +2665,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...data,
       id: `ns-${Date.now()}`,
     };
-    setNeighborServices((prev) => [...prev, newService]);
+    setNeighborServices((prev) => {
+      const next = [...prev, newService];
+      neighborServicesRef.current = next;
+      flushSharedNow('neighbor_services', next);
+      return next;
+    });
   };
 
   const updateNeighborService = (id: string, updates: Partial<NeighborService>) => {
@@ -2668,9 +2678,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo el administrador puede modificar el catálogo SOFER.');
       return;
     }
-    setNeighborServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
-    );
+    setNeighborServices((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
+      neighborServicesRef.current = next;
+      flushSharedNow('neighbor_services', next);
+      return next;
+    });
   };
 
   const removeNeighborService = (id: string) => {

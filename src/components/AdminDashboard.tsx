@@ -30,6 +30,7 @@ import {
   Tag,
   AlertTriangle,
   Sparkles,
+  Settings2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { exportAccountingToExcel, exportBuildingsPortfolioToExcel, exportTicketsToExcel, formatCurrency } from '../utils/exportUtils';
@@ -42,6 +43,7 @@ import { UserManagementModal } from './UserManagementModal';
 import { ExpirationAlerts } from './ExpirationAlerts';
 import { AddBuildingModal } from './AddBuildingModal';
 import { AssignPresidentModal } from './AssignPresidentModal';
+import { AdminControlPanel } from './AdminControlPanel';
 
 interface AdminDashboardProps {
   onOpenAddBuilding: () => void;
@@ -206,6 +208,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <ExpirationAlerts />
 
+      {currentUser.role === 'admin' && <AdminControlPanel />}
+
       {/* Acciones Rápidas (Role-Specific Menu) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {isWorker ? (
@@ -268,6 +272,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </>
         ) : (
           <>
+            <button
+              onClick={() => document.getElementById('admin-control-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#0A2E6D]/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
+            >
+              <div className="p-3 bg-[#0A2E6D]/10 text-[#0A2E6D] rounded-xl group-hover:scale-110 transition-transform">
+                <Settings2 className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-[#16202E] text-center">Precios, roles y fincas</span>
+            </button>
+
             <button
               onClick={onOpenAddBuilding}
               className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#0A2E6D]/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
