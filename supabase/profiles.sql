@@ -18,6 +18,23 @@ create table if not exists public.profiles (
   updated_at timestamptz default now()
 );
 
+alter table public.profiles add column if not exists email text;
+alter table public.profiles add column if not exists name text;
+alter table public.profiles add column if not exists avatar text;
+alter table public.profiles add column if not exists phone text;
+alter table public.profiles add column if not exists role text not null default 'unassigned';
+alter table public.profiles add column if not exists building_id text;
+alter table public.profiles add column if not exists building_name text;
+alter table public.profiles add column if not exists specialty text;
+alter table public.profiles add column if not exists unit_or_area text;
+alter table public.profiles add column if not exists provider text;
+alter table public.profiles add column if not exists status text default 'active';
+alter table public.profiles add column if not exists monthly_fee numeric;
+alter table public.profiles add column if not exists fee_balance numeric;
+alter table public.profiles add column if not exists fee_frequency text;
+alter table public.profiles add column if not exists created_at timestamptz default now();
+alter table public.profiles add column if not exists updated_at timestamptz default now();
+
 create unique index if not exists profiles_email_lower_idx on public.profiles (lower(email));
 
 create or replace function public.is_app_admin()
