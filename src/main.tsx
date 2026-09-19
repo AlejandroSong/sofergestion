@@ -2,17 +2,19 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import {redirectPreviewToProduction} from './lib/authConfig';
-import {isNativeShell} from './lib/googleAuth';
 import './index.css';
 
-if (!isNativeShell() && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('/sw.js');
+if ('serviceWorker' in navigator) {
+  void navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((reg) => {
+      void reg.unregister();
+    });
   });
 }
 
-if (!redirectPreviewToProduction()) {
-  createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root');
+if (root && !redirectPreviewToProduction()) {
+  createRoot(root).render(
     <StrictMode>
       <App />
     </StrictMode>,

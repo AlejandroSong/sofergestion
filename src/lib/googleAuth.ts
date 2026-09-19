@@ -1,5 +1,4 @@
 import { DEFAULT_GOOGLE_CLIENT_ID } from './authConfig';
-import { loadGoogleIdentity } from './googleGis';
 
 export const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
 
@@ -31,6 +30,7 @@ export async function requestGoogleIdToken(clientId: string): Promise<string> {
   if (!clientId) {
     throw new Error('Falta el Client ID de Google');
   }
+  const { loadGoogleIdentity } = await import('./googleGis');
   await loadGoogleIdentity();
   const googleId = window.google?.accounts?.id;
   if (!googleId) {
@@ -51,7 +51,7 @@ export async function requestGoogleIdToken(clientId: string): Promise<string> {
     });
     googleId.prompt((notification) => {
       if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        reject(new Error('Pulsa el botón de Google para entrar. En la app no se usa el navegador.'));
+        reject(new Error('Pulsa el botón de Google para entrar.'));
       }
     });
   });

@@ -11,6 +11,8 @@ export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_UyqriemBbZISFZZMBu0qdw_
 export const DEFAULT_GOOGLE_CLIENT_ID =
   '1052739078825-vhbkiscvgt7otbeksk7v4sdast7ldr5t.apps.googleusercontent.com';
 
+export const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
+
 export function googleRedirectUri(): string {
   return `${window.location.origin}${GOOGLE_CALLBACK_PATH}`;
 }

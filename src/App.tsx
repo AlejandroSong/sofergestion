@@ -69,13 +69,13 @@ const MainAppContent: React.FC = () => {
 
   if (!authReady) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center text-[#0A2E6D] text-sm font-semibold">
+      <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center text-[#0A2E6D] text-sm font-semibold">
         Cargando sesión…
       </div>
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !currentUser) {
     return (
       <>
         <AuthScreen />

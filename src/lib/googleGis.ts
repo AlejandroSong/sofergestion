@@ -1,4 +1,4 @@
-import { googleClientId } from './googleAuth';
+import { googleClientId } from './authConfig';
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
 
