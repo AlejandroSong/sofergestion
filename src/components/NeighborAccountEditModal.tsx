@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { addPeriodToIso, formatIsoDateEs, nextMonthFifthIso, todayIso } from '../utils/dates';
 import { User } from '../types';
 import { 
   X, 
@@ -8,11 +9,9 @@ import {
   Check, 
   CreditCard, 
   Building2, 
-  HelpCircle,
   Plus,
   Minus,
   Sparkles,
-  ArrowRight
 } from 'lucide-react';
 
 interface NeighborAccountEditModalProps {
@@ -28,7 +27,7 @@ export const NeighborAccountEditModal: React.FC<NeighborAccountEditModalProps> =
   neighbor,
   onSaved,
 }) => {
-  const { updateUser, currentUser } = useApp();
+  const { updateUser, currentUser, showToast } = useApp();
 
   const [feeBalance, setFeeBalance] = useState<number>(0);
   const [balanceAdjustment, setBalanceAdjustment] = useState<string>('');
@@ -46,18 +45,9 @@ export const NeighborAccountEditModal: React.FC<NeighborAccountEditModalProps> =
       setFeeBalance(neighbor.feeBalance ?? 0);
       setBalanceAdjustment('');
       setLastPaymentAmount(neighbor.lastPaymentAmount ?? neighbor.monthlyFee ?? 85);
-      setLastPaymentDate(neighbor.lastPaymentDate ?? new Date().toISOString().split('T')[0]);
+      setLastPaymentDate(neighbor.lastPaymentDate ?? todayIso());
       setLastPaymentConcept(neighbor.lastPaymentConcept ?? 'Cuota de comunidad');
-      
-      // Default next due date if not set: 5th of next month
-      if (neighbor.nextDueDate) {
-        setNextDueDate(neighbor.nextDueDate);
-      } else {
-        const nextMonth = new Date();
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
-        nextMonth.setDate(5);
-        setNextDueDate(nextMonth.toISOString().split('T')[0]);
-      }
+      setNextDueDate(neighbor.nextDueDate ?? nextMonthFifthIso());
 
       setFeeFrequency(neighbor.feeFrequency ?? 'mensual');
       setQuotaAmount(neighbor.monthlyFee ?? 85);
@@ -102,12 +92,13 @@ export const NeighborAccountEditModal: React.FC<NeighborAccountEditModalProps> =
       nextDueDate,
     });
 
+    showToast('Cuenta actualizada', `Se guardó el saldo y las cuotas de ${neighbor.name}.`, 'success');
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
       if (onSaved) onSaved();
       onClose();
-    }, 600);
+    }, 700);
   };
 
   const isTechnician = currentUser.role === 'worker';
@@ -405,9 +396,21 @@ export const NeighborAccountEditModal: React.FC<NeighborAccountEditModalProps> =
                 <p className="text-[11px] mt-0.5">
                   El vecino verá programada su cuota para el día{' '}
                   <strong className="text-[#0A2E6D]">
-                    {nextDueDate ? new Date(nextDueDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'No definida'}
-                  </strong>.
+                    {nextDueDate
+                      ? formatIsoDateEs(nextDueDate, { day: 'numeric', month: 'long', year: 'numeric' })
+                      : 'No definida'}
+                  </strong>
+                  .
                 </p>
+                {lastPaymentDate && (
+                  <button
+                    type="button"
+                    className="mt-2 text-[11px] font-semibold text-[#0A2E6D] hover:underline cursor-pointer"
+                    onClick={() => setNextDueDate(addPeriodToIso(lastPaymentDate, feeFrequency))}
+                  >
+                    Calcular desde el último pago ({feeFrequency === 'anual' ? '+1 año' : '+1 mes'})
+                  </button>
+                )}
               </div>
             </div>
           </div>

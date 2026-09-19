@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { NeighborService, NeighborServiceRequest, User } from '../types';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
+import { formatIsoDateEs } from '../utils/dates';
 
 export const NeighborServicesManager: React.FC = () => {
   const { 
@@ -466,8 +467,8 @@ const NeighborAccountsManager: React.FC = () => {
             const quota = neighbor.monthlyFee ?? 85;
             const frequency = neighbor.feeFrequency ?? 'mensual';
             const lastPay = neighbor.lastPaymentAmount ?? quota;
-            const lastDate = neighbor.lastPaymentDate ? new Date(neighbor.lastPaymentDate).toLocaleDateString('es-ES') : '05/08/2026';
-            const nextDue = neighbor.nextDueDate ? new Date(neighbor.nextDueDate).toLocaleDateString('es-ES') : '05/09/2026';
+            const lastDate = formatIsoDateEs(neighbor.lastPaymentDate);
+            const nextDue = formatIsoDateEs(neighbor.nextDueDate);
             const isDebtor = balance < 0;
 
             return (

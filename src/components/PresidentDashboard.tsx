@@ -33,6 +33,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { formatIsoDateEs } from '../utils/dates';
 import { exportBuildingFinancialStatementPDF, exportTicketsToExcel, exportNeighborReceiptPDF, formatCurrency } from '../utils/exportUtils';
 import { TicketStatus, NeighborService } from '../types';
 import { CommonAreasManager } from './CommonAreasManager';
@@ -120,8 +121,8 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
   const presidentFee = currentUser.monthlyFee ?? 95;
   const presidentFrequency = currentUser.feeFrequency ?? 'mensual';
   const presidentLastPayment = currentUser.lastPaymentAmount ?? presidentFee;
-  const presidentLastDate = currentUser.lastPaymentDate || '05/08/2026';
-  const presidentNextDue = currentUser.nextDueDate || '05/09/2026';
+  const presidentLastDate = formatIsoDateEs(currentUser.lastPaymentDate);
+  const presidentNextDue = formatIsoDateEs(currentUser.nextDueDate);
 
   // Services available & filtering
   const availableServices = neighborServices.filter(s => s.available);
@@ -838,7 +839,7 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
                           <span className="text-[10px] text-[#5A6B82] block">{neighbor.feeFrequency === 'anual' ? 'Anual' : 'Mensual'}</span>
                         </td>
                         <td className="px-4 py-3 text-[#16202E]">
-                          {neighbor.lastPaymentDate ? new Date(neighbor.lastPaymentDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No registrado'}
+                          {formatIsoDateEs(neighbor.lastPaymentDate, { day: '2-digit', month: 'short', year: 'numeric' })}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-col gap-0.5">

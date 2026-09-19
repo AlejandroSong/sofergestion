@@ -15,6 +15,7 @@ import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchInbox, insertInbox, markInboxRead, remoteToNotification } from '../lib/inbox';
 import { clearRevocation, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, upsertProfile } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { nextMonthFifthIso, todayIso } from '../utils/dates';
 import type { Session } from '@supabase/supabase-js';
 import {
   Building,
@@ -250,11 +251,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUser = (id: string, updates: Partial<User>) => {
-    const newUsers = users.map(u => u.id === id ? { ...u, ...updates } : u);
+    const target = users.find((u) => u.id === id);
+    const newUsers = users.map((u) => (u.id === id || (target && u.email === target.email) ? { ...u, ...updates } : u));
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
-    if (currentUser.id === id) {
-      setCurrentUser(prev => ({ ...prev, ...updates }));
+    const persisted = newUsers.find((u) => u.id === id) || newUsers.find((u) => target && u.email === target.email);
+    if (
+      persisted &&
+      (currentUser.id === id ||
+        currentUser.email.trim().toLowerCase() === persisted.email.trim().toLowerCase())
+    ) {
+      setCurrentUser(persisted);
+      localStorage.setItem('gest_v2_current_user', JSON.stringify(persisted));
+    }
+    if (persisted) {
+      void persistProfile(persisted).then((result) => {
+        if (!result.ok) {
+          showToast('No se guardó la cuenta', result.message || 'No se pudo escribir el saldo en el servidor.', 'alert');
+        }
+      });
     }
   };
 
@@ -296,9 +311,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           feeBalance: isBuildingRole ? (extra?.feeBalance ?? u.feeBalance ?? 0) : undefined,
           feeFrequency: isBuildingRole ? (u.feeFrequency || 'mensual') : undefined,
           lastPaymentAmount: isBuildingRole ? (u.lastPaymentAmount ?? (newRole === 'president' ? 95 : 85)) : undefined,
-          lastPaymentDate: isBuildingRole ? (u.lastPaymentDate || '2026-08-05') : undefined,
-          lastPaymentConcept: isBuildingRole ? (u.lastPaymentConcept || 'Cuota de comunidad - Agosto 2026') : undefined,
-          nextDueDate: isBuildingRole ? (u.nextDueDate || '2026-09-05') : undefined,
+          lastPaymentDate: isBuildingRole ? (u.lastPaymentDate || todayIso()) : undefined,
+          lastPaymentConcept: isBuildingRole ? (u.lastPaymentConcept || 'Cuota de comunidad') : undefined,
+          nextDueDate: isBuildingRole ? (u.nextDueDate || nextMonthFifthIso()) : undefined,
           taxReturnsRemaining: isBuildingRole ? (u.taxReturnsRemaining ?? 2) : undefined,
           specialty: newRole === 'worker' ? (extra?.specialty || u.specialty || 'Mantenimiento General') : undefined,
         };

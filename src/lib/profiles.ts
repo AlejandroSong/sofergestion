@@ -18,6 +18,10 @@ type ProfileRow = {
   monthly_fee?: number | null;
   fee_balance?: number | null;
   fee_frequency?: User['feeFrequency'] | null;
+  last_payment_amount?: number | null;
+  last_payment_date?: string | null;
+  last_payment_concept?: string | null;
+  next_due_date?: string | null;
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,6 +48,10 @@ export function profileToUser(row: ProfileRow): User {
     monthlyFee: row.monthly_fee ?? undefined,
     feeBalance: row.fee_balance ?? undefined,
     feeFrequency: row.fee_frequency || undefined,
+    lastPaymentAmount: row.last_payment_amount ?? undefined,
+    lastPaymentDate: row.last_payment_date || undefined,
+    lastPaymentConcept: row.last_payment_concept || undefined,
+    nextDueDate: row.next_due_date || undefined,
   };
 }
 
@@ -109,7 +117,7 @@ export async function persistProfile(user: User, authUserId?: string): Promise<{
   if (!supabase) return { ok: true };
   const email = user.email.trim().toLowerCase();
 
-  const { error: rpcError, data: rpcData } = await supabase.rpc('assign_profile_role', {
+  const { error: rpcError } = await supabase.rpc('assign_profile_role', {
     target_email: email,
     new_role: user.role,
     new_status: user.status ?? 'active',
@@ -118,7 +126,6 @@ export async function persistProfile(user: User, authUserId?: string): Promise<{
     new_specialty: user.specialty ?? null,
     new_unit_or_area: user.unitOrArea ?? null,
   });
-  if (!rpcError && rpcData) return { ok: true };
 
   const patch = {
     name: user.name,
@@ -131,6 +138,13 @@ export async function persistProfile(user: User, authUserId?: string): Promise<{
     unit_or_area: user.unitOrArea ?? null,
     provider: user.provider ?? 'google',
     status: user.status ?? 'active',
+    monthly_fee: user.monthlyFee ?? null,
+    fee_balance: user.feeBalance ?? null,
+    fee_frequency: user.feeFrequency ?? null,
+    last_payment_amount: user.lastPaymentAmount ?? null,
+    last_payment_date: user.lastPaymentDate || null,
+    last_payment_concept: user.lastPaymentConcept ?? null,
+    next_due_date: user.nextDueDate || null,
   };
 
   let id = isUuid(user.id) ? user.id : undefined;
@@ -152,15 +166,15 @@ export async function persistProfile(user: User, authUserId?: string): Promise<{
     };
   }
 
-  const { error, data } = await supabase.from('profiles').update(patch).eq('id', id).select('id, role');
+  const { error, data } = await supabase.from('profiles').update(patch).eq('id', id).select('id');
   if (error) {
-    console.warn('No se pudo guardar el rol:', error.message);
+    console.warn('No se pudo guardar el perfil:', error.message);
     return { ok: false, message: error.message };
   }
   if (!data?.length) {
     return {
       ok: false,
-      message: rpcError?.message || 'No hay permiso para cambiar este rol. Vuelve a ejecutar supabase/profiles.sql.',
+      message: rpcError?.message || 'No hay permiso para guardar la cuenta. Vuelve a ejecutar supabase/profiles.sql.',
     };
   }
   return { ok: true };

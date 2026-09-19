@@ -26,6 +26,7 @@ import {
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
 import { ServiceRequestModal } from './ServiceRequestModal';
 import { exportNeighborReceiptPDF } from '../utils/exportUtils';
+import { formatIsoDateEs } from '../utils/dates';
 import { NeighborService } from '../types';
 
 interface NeighborDashboardProps {
@@ -114,12 +115,8 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
     const frequency = currentUser.feeFrequency ?? 'mensual';
     const balance = currentUser.feeBalance ?? 0;
     const lastPayment = currentUser.lastPaymentAmount ?? cuota;
-    const lastDate = currentUser.lastPaymentDate 
-      ? new Date(currentUser.lastPaymentDate).toLocaleDateString('es-ES') 
-      : '05/08/2026';
-    const nextDue = currentUser.nextDueDate 
-      ? new Date(currentUser.nextDueDate).toLocaleDateString('es-ES') 
-      : '05/09/2026';
+    const lastDate = formatIsoDateEs(currentUser.lastPaymentDate);
+    const nextDue = formatIsoDateEs(currentUser.nextDueDate);
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

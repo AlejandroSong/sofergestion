@@ -32,6 +32,10 @@ alter table public.profiles add column if not exists status text default 'active
 alter table public.profiles add column if not exists monthly_fee numeric;
 alter table public.profiles add column if not exists fee_balance numeric;
 alter table public.profiles add column if not exists fee_frequency text;
+alter table public.profiles add column if not exists last_payment_amount numeric;
+alter table public.profiles add column if not exists last_payment_date date;
+alter table public.profiles add column if not exists last_payment_concept text;
+alter table public.profiles add column if not exists next_due_date date;
 alter table public.profiles add column if not exists created_at timestamptz default now();
 alter table public.profiles add column if not exists updated_at timestamptz default now();
 
