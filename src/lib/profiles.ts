@@ -178,6 +178,13 @@ export async function clearRevocation(email: string) {
   await supabase.from('access_revocations').delete().eq('email', email.trim().toLowerCase());
 }
 
+export async function fetchRevokedEmails(): Promise<string[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('access_revocations').select('email').order('revoked_at', { ascending: false });
+  if (error || !data) return [];
+  return data.map((row) => row.email);
+}
+
 export async function isEmailRevoked(email: string): Promise<boolean> {
   if (!supabase) return false;
   const { data, error } = await supabase

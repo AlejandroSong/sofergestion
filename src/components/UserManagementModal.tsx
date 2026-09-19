@@ -24,11 +24,13 @@ import {
   Sparkles,
   CreditCard,
   Filter,
+  RotateCcw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { isLastActiveAdmin } from '../data/users';
 import { Role, User } from '../types';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
+import { fetchRevokedEmails } from '../lib/profiles';
 import { formatCurrency } from '../utils/exportUtils';
 
 interface UserManagementModalProps {
@@ -47,6 +49,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     revokeBuildingAssignment,
     buildings,
     refreshDirectory,
+    restoreAccess,
   } = useApp();
 
   const [isAdding, setIsAdding] = useState(false);
@@ -79,9 +82,13 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const [editUnitOrArea, setEditUnitOrArea] = useState<string>('');
   const [editMonthlyFee, setEditMonthlyFee] = useState<number>(85);
   const [selectedNeighborForAccountEdit, setSelectedNeighborForAccountEdit] = useState<User | null>(null);
+  const [revokedEmails, setRevokedEmails] = useState<string[]>([]);
+  const [restoreEmail, setRestoreEmail] = useState('');
 
   useEffect(() => {
-    if (isOpen) void refreshDirectory();
+    if (!isOpen) return;
+    void refreshDirectory();
+    void fetchRevokedEmails().then(setRevokedEmails);
   }, [isOpen]);
 
   const standardSpecialties = [
@@ -282,6 +289,60 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 <p>
                   <strong className="text-[#16202E]">Regla de Seguridad:</strong> Los usuarios deben iniciar sesión primero antes de tener un rol. Los usuarios <strong className="text-[#16202E]">no pueden cambiarse roles entre sí</strong>; solo tú como <strong className="text-[#0A2E6D]">Administrador</strong> puedes asignarles su edificio, su especialidad o remover sus permisos.
                 </p>
+              </div>
+
+              <div className="p-3.5 bg-white border border-[#E2E8F0] rounded-2xl space-y-3">
+                <p className="text-xs font-bold text-[#16202E] flex items-center gap-1.5">
+                  <RotateCcw className="w-3.5 h-3.5 text-[#0A2E6D]" />
+                  Reactivar cuenta eliminada
+                </p>
+                <p className="text-[11px] text-[#5A6B82]">
+                  Escribe el correo bloqueado y pulsa Reactivar. Esa persona podrá entrar otra vez con Google y aparecerá sin rol.
+                </p>
+                <form
+                  className="flex flex-col sm:flex-row gap-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const email = restoreEmail.trim().toLowerCase();
+                    if (!email) return;
+                    await restoreAccess(email);
+                    setRestoreEmail('');
+                    setRevokedEmails(await fetchRevokedEmails());
+                  }}
+                >
+                  <input
+                    type="email"
+                    value={restoreEmail}
+                    onChange={(e) => setRestoreEmail(e.target.value)}
+                    placeholder="correo@gmail.com"
+                    className="flex-1 px-3 py-2 bg-[#F4F6FA] border border-[#E2E8F0] rounded-xl text-xs outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3.5 py-2 bg-[#0A2E6D] hover:bg-[#082456] text-white rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    Reactivar
+                  </button>
+                </form>
+                {revokedEmails.length > 0 && (
+                  <div className="space-y-1.5">
+                    {revokedEmails.map((email) => (
+                      <div key={email} className="flex items-center justify-between gap-2 text-xs bg-[#F4F6FA] border border-[#E2E8F0] rounded-xl px-3 py-2">
+                        <span className="truncate text-[#16202E]">{email}</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await restoreAccess(email);
+                            setRevokedEmails(await fetchRevokedEmails());
+                          }}
+                          className="text-[#0A2E6D] font-bold hover:underline cursor-pointer shrink-0"
+                        >
+                          Reactivar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Controls bar: search, role filter & Add button */}

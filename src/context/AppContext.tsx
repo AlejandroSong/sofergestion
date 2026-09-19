@@ -70,6 +70,7 @@ interface AppContextType {
   toggleUserStatus: (id: string) => void;
   revokeBuildingAssignment: (userId: string) => void;
   deleteUser: (id: string) => void;
+  restoreAccess: (email: string) => Promise<void>;
   switchRole: (role: Role, userId?: string) => void;
   loginWithEmail: (email: string, password?: string) => Promise<{ success: boolean; message?: string }>;
   loginWithGoogle: (googleData: { id?: string; name: string; email: string; avatar?: string; role?: Role; buildingId?: string; specialty?: string }) => { success: boolean; message?: string };
@@ -185,6 +186,7 @@ interface AppContextType {
   // In-app interactive Toast notifications
   toasts: ToastItem[];
   dismissToast: (id: string) => void;
+  showToast: (title: string, message: string, type?: 'success' | 'alert' | 'info') => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -421,6 +423,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     showToast('Usuario Eliminado', `${userToDelete.name} perdió todo el acceso al sistema.`, 'info');
+  };
+
+  const restoreAccess = async (email: string) => {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return;
+    await clearRevocation(normalized);
+    showToast(
+      'Cuenta reactivada',
+      `${normalized} ya puede iniciar sesión otra vez con Google. Entrará sin rol hasta que se lo asignes.`,
+      'success'
+    );
   };
 
   const loginWithEmail = async (email: string, password?: string): Promise<{ success: boolean; message?: string }> => {
@@ -2135,6 +2148,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleUserStatus,
         revokeBuildingAssignment,
         deleteUser,
+        restoreAccess,
         switchRole,
         loginWithEmail,
         loginWithGoogle,
@@ -2195,6 +2209,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedTicketId,
         toasts,
         dismissToast,
+        showToast,
       }}
     >
       {children}
