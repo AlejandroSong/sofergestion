@@ -87,11 +87,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
 
-  useEffect(() => {
-    if (adminInboxTarget?.type === 'users') {
-      setIsUserManagementOpen(true);
-    }
-  }, [adminInboxTarget]);
   const [alertWaveRunning, setAlertWaveRunning] = useState(false);
   const [selectedBuildingToAdjust, setSelectedBuildingToAdjust] = useState<Building | null>(null);
   const [buildingToEdit, setBuildingToEdit] = useState<Building | null>(null);

@@ -197,7 +197,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     const target = allUsers.find(
       (u) =>
         u.id === adminInboxTarget.userId ||
-        u.email.trim().toLowerCase() === adminInboxTarget.userId?.trim().toLowerCase()
+        (u.email || '').trim().toLowerCase() === (adminInboxTarget.userId || '').trim().toLowerCase()
     );
     if (!target) return;
     setFilterRole(target.role === 'unassigned' ? 'unassigned' : 'all');

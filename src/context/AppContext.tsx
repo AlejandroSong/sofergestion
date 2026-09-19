@@ -1475,6 +1475,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (currentUser.role === 'president' && (bldg.id === currentUser.buildingId || bldg.presidentId === currentUser.id)) {
       return bldg;
     }
+    if (currentUser.role === 'neighbor' && bldg.id === currentUser.buildingId) return bldg;
     return undefined;
   };
 
@@ -2778,7 +2779,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return tickets;
     }
     if (currentUser.role === 'president' || currentUser.role === 'neighbor') {
-      return tickets.filter((t) => t.buildingId === currentUser.buildingId || t.createdBy.id === currentUser.id);
+      return tickets.filter((t) => t.buildingId === currentUser.buildingId || t.createdBy?.id === currentUser.id);
     }
     return [];
   }, [currentUser, tickets]);

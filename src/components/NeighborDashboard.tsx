@@ -66,7 +66,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
   const balance = currentUser.feeBalance ?? 0;
   
   const myTickets = tickets.filter(t => 
-    t.createdBy.id === currentUser.id || 
+    t.createdBy?.id === currentUser.id || 
     (t.buildingId === currentUser.buildingId && t.unitOrArea === currentUser.unitOrArea)
   );
   

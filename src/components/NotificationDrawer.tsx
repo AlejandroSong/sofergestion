@@ -48,6 +48,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
     unreadCount,
     showToast,
     setAdminInboxTarget,
+    setActiveTab,
   } = useApp();
 
   const userNotifications = notifications
@@ -72,35 +73,54 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
 
   const handleClickNotification = (n: (typeof notifications)[0]) => {
     markNotificationAsRead(n.id);
+
     if (n.requestId && currentUser.role === 'admin') {
+      setSelectedBuildingId(null);
       setAdminInboxTarget({ type: 'sofer', requestId: n.requestId, userId: n.userId });
       onClose();
       return;
     }
-    if (n.userId && currentUser.role === 'admin') {
-      setAdminInboxTarget({ type: 'users', userId: n.userId });
-      onClose();
-      return;
-    }
-    const ticket = n.ticketId ? tickets.find((t) => t.id === n.ticketId) : undefined;
-    const buildingId = n.buildingId || ticket?.buildingId;
-    const building = buildingId ? buildings.find((b) => b.id === buildingId) : undefined;
 
+    const ticket = n.ticketId ? tickets.find((t) => t.id === n.ticketId) : undefined;
     if (ticket) {
       setSelectedTicketId(ticket.id);
       onClose();
       return;
     }
 
-    if (building && canOpenBuilding(currentUser, building.id)) {
+    const housingNotice =
+      n.type === 'system' &&
+      /vivienda|comunidad|piso/i.test(`${n.title} ${n.message}`);
+
+    if (currentUser.role === 'admin' && (n.userId || housingNotice)) {
+      setSelectedBuildingId(null);
+      setAdminInboxTarget({ type: 'users', userId: n.userId });
+      onClose();
+      return;
+    }
+
+    if (
+      (currentUser.role === 'neighbor' || currentUser.role === 'president') &&
+      (housingNotice || n.type === 'system')
+    ) {
+      setSelectedBuildingId(null);
+      setActiveTab('vivienda');
+      onClose();
+      return;
+    }
+
+    const buildingId = n.buildingId || ticket?.buildingId;
+    const building = buildingId ? buildings.find((b) => b.id === buildingId) : undefined;
+
+    if (building && canOpenBuilding(currentUser, building.id) && currentUser.role !== 'neighbor') {
       setSelectedBuildingId(building.id);
       onClose();
       return;
     }
 
     showToast(
-      'Este aviso ya no está disponible',
-      'La incidencia o el edificio de este aviso no existen en tu sesión (puede haberse borrado o ser de una prueba anterior).',
+      'Aviso marcado como leído',
+      n.message || 'Ya puedes seguir desde tu panel.',
       'info'
     );
     onClose();

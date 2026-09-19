@@ -15,7 +15,8 @@ import { AddBuildingModal } from './components/AddBuildingModal';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { ReportsModal } from './components/ReportsModal';
 import { SoferServicesModal } from './components/SoferServicesModal';
-import { canOpenBuilding, canOpenReports, canManageBuildings, canPostAccounting, canManageSoferCatalog, canCreateTicket } from './utils/permissions';
+import { UserManagementModal } from './components/UserManagementModal';
+import { canOpenBuilding, canOpenReports, canManageBuildings, canPostAccounting, canManageSoferCatalog, canCreateTicket, canManageUsers } from './utils/permissions';
 
 const MainAppContent: React.FC = () => {
   const {
@@ -29,6 +30,7 @@ const MainAppContent: React.FC = () => {
     getBuildingById,
     adminInboxTarget,
     setAdminInboxTarget,
+    setActiveTab,
   } = useApp();
 
   const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
@@ -38,19 +40,29 @@ const MainAppContent: React.FC = () => {
   const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isSoferOpen, setIsSoferOpen] = useState(false);
+  const [isUsersOpen, setIsUsersOpen] = useState(false);
 
   useEffect(() => {
     if (adminInboxTarget?.type === 'sofer' && canManageSoferCatalog(currentUser)) {
       setIsSoferOpen(true);
     }
-  }, [adminInboxTarget, currentUser]);
+    if (adminInboxTarget?.type === 'users' && canManageUsers(currentUser)) {
+      setSelectedBuildingId(null);
+      setIsUsersOpen(true);
+    }
+  }, [adminInboxTarget, currentUser, setSelectedBuildingId]);
 
   useEffect(() => {
     if (!selectedBuildingId) return;
+    if (currentUser.role === 'neighbor') {
+      setSelectedBuildingId(null);
+      setActiveTab('vivienda');
+      return;
+    }
     if (!canOpenBuilding(currentUser, selectedBuildingId) || !getBuildingById(selectedBuildingId)) {
       setSelectedBuildingId(null);
     }
-  }, [selectedBuildingId, currentUser, setSelectedBuildingId, getBuildingById]);
+  }, [selectedBuildingId, currentUser, setSelectedBuildingId, getBuildingById, setActiveTab]);
 
   if (!authReady) {
     return (
@@ -99,7 +111,7 @@ const MainAppContent: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* View Router */}
-        {selectedBuildingId ? (
+        {selectedBuildingId && currentUser.role !== 'neighbor' ? (
           <BuildingDetailView
             buildingId={selectedBuildingId}
             onBack={() => setSelectedBuildingId(null)}
@@ -179,6 +191,14 @@ const MainAppContent: React.FC = () => {
         onClose={() => {
           setIsSoferOpen(false);
           if (adminInboxTarget?.type === 'sofer') setAdminInboxTarget(null);
+        }}
+      />
+
+      <UserManagementModal
+        isOpen={isUsersOpen && canManageUsers(currentUser)}
+        onClose={() => {
+          setIsUsersOpen(false);
+          if (adminInboxTarget?.type === 'users') setAdminInboxTarget(null);
         }}
       />
 

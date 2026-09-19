@@ -34,6 +34,12 @@ export const SoferServicesModal: React.FC<SoferServicesModalProps> = ({ isOpen, 
     available: true,
   });
 
+  useEffect(() => {
+    if (isOpen && adminInboxTarget?.type === 'sofer') {
+      setTab('requests');
+    }
+  }, [isOpen, adminInboxTarget]);
+
   if (!isOpen || currentUser.role !== 'admin') return null;
 
   const handleAdd = (e: React.FormEvent) => {
@@ -49,12 +55,6 @@ export const SoferServicesModal: React.FC<SoferServicesModalProps> = ({ isOpen, 
     setNewService({ name: '', description: '', price: 0, category: 'mantenimiento', available: true });
     setIsAdding(false);
   };
-
-  useEffect(() => {
-    if (isOpen && adminInboxTarget?.type === 'sofer') {
-      setTab('requests');
-    }
-  }, [isOpen, adminInboxTarget]);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70">
