@@ -86,6 +86,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [buildingSearch, setBuildingSearch] = useState('');
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(false);
   const [selectedBuildingToAdjust, setSelectedBuildingToAdjust] = useState<Building | null>(null);
   const [buildingToEdit, setBuildingToEdit] = useState<Building | null>(null);
   const [buildingToAssign, setBuildingToAssign] = useState<Building | null>(null);
@@ -208,7 +209,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <ExpirationAlerts />
 
-      {currentUser.role === 'admin' && <AdminControlPanel />}
+      {currentUser.role === 'admin' && (
+        <button
+          type="button"
+          onClick={() => setIsControlPanelOpen(true)}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-[#0A2E6D] text-white rounded-2xl text-sm font-bold cursor-pointer shadow-md"
+        >
+          <span>Abrir panel: precios, personas y fincas</span>
+          <Settings2 className="w-4 h-4" />
+        </button>
+      )}
 
       {/* Acciones Rápidas (Role-Specific Menu) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -273,7 +283,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ) : (
           <>
             <button
-              onClick={() => document.getElementById('admin-control-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              onClick={() => setIsControlPanelOpen(true)}
               className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#0A2E6D]/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
             >
               <div className="p-3 bg-[#0A2E6D]/10 text-[#0A2E6D] rounded-xl group-hover:scale-110 transition-transform">
@@ -1547,6 +1557,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         building={buildingToAssign}
         onClose={() => setBuildingToAssign(null)}
       />
+
+      {currentUser.role === 'admin' && (
+        <AdminControlPanel isOpen={isControlPanelOpen} onClose={() => setIsControlPanelOpen(false)} />
+      )}
     </div>
   );
 };

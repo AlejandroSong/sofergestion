@@ -296,6 +296,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newUsers = [...users, newUser];
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
+    void persistProfile(newUser);
     return newUser;
   };
 
@@ -2671,6 +2672,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       flushSharedNow('neighbor_services', next);
       return next;
     });
+    showToast('Servicio añadido', `${newService.name} · ${newService.price} €`, 'success');
   };
 
   const updateNeighborService = (id: string, updates: Partial<NeighborService>) => {
