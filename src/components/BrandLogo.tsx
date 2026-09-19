@@ -2,23 +2,26 @@ import React from 'react';
 import { SOFER_LOGO_SRC } from '../assets/soferLogoData';
 
 interface BrandLogoProps {
-  variant?: 'nav' | 'hero';
+  variant?: 'nav' | 'hero' | 'menu';
 }
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({ variant = 'nav' }) => {
-  const isHero = variant === 'hero';
+  const sizeClass =
+    variant === 'hero'
+      ? 'h-44 w-auto max-w-[260px] mx-auto'
+      : variant === 'menu'
+        ? 'h-20 w-auto max-w-[180px]'
+        : 'h-14 w-auto max-w-[150px]';
 
   return (
     <img
-      src={SOFER_LOGO_SRC}
+      src="/sofer-logo.jpg"
       alt="SOFER Gestión"
-      width={isHero ? 280 : 96}
-      height={isHero ? 400 : 72}
-      className={
-        isHero
-          ? 'h-44 w-auto max-w-[260px] mx-auto object-contain block'
-          : 'h-[3.25rem] w-[4.75rem] object-contain bg-white rounded-xl p-0.5 shrink-0 block'
-      }
+      onError={(e) => {
+        e.currentTarget.onerror = null;
+        e.currentTarget.src = SOFER_LOGO_SRC;
+      }}
+      className={`${sizeClass} object-contain bg-white rounded-xl p-1 shrink-0 block`}
     />
   );
 };
