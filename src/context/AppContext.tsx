@@ -391,27 +391,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteUser = (id: string) => {
-    if (isPrimaryAdmin({ ...ADMIN_USER, id })) {
+    const userToDelete = users.find((u) => u.id === id);
+    if (!userToDelete || isPrimaryAdmin(userToDelete)) {
       showToast('Acción Bloqueada', 'No se puede eliminar la cuenta del Administrador Principal.', 'alert');
       return;
     }
-    const userToDelete = users.find(u => u.id === id);
-    if (userToDelete && isPrimaryAdmin(userToDelete)) {
-      showToast('Acción Bloqueada', 'No se puede eliminar la cuenta del Administrador Principal.', 'alert');
-      return;
-    }
-    const newUsers = users.filter(u => u.id !== id);
+    const newUsers = users.filter((u) => u.id !== id);
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
-    if (supabase && userToDelete && /^[0-9a-f-]{36}$/i.test(userToDelete.id)) {
-      void supabase.from('profiles').delete().eq('id', userToDelete.id);
+    if (supabase) {
+      if (/^[0-9a-f-]{36}$/i.test(userToDelete.id)) {
+        void supabase.from('profiles').delete().eq('id', userToDelete.id);
+      } else {
+        void supabase.from('profiles').delete().eq('email', userToDelete.email.trim().toLowerCase());
+      }
     }
 
     if (currentUser.id === id) {
-      // Fallback to first admin
       setCurrentUser(newUsers[0] || INITIAL_USERS[0]);
     }
-    showToast('Usuario Eliminado', `El usuario ${userToDelete?.name || ''} y sus roles fueron removidos del sistema`, 'info');
+    showToast('Usuario Eliminado', `El usuario ${userToDelete.name} y sus roles fueron removidos del sistema`, 'info');
   };
 
   const loginWithEmail = async (email: string, password?: string): Promise<{ success: boolean; message?: string }> => {
