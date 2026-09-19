@@ -941,10 +941,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (document.visibilityState === 'visible') void refreshDirectory();
     };
     document.addEventListener('visibilitychange', onVisible);
-    const timer = window.setInterval(() => void refreshDirectory(), 20000);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
-      window.clearInterval(timer);
     };
   }, []);
 

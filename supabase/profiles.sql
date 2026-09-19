@@ -1,6 +1,6 @@
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  email text not null unique,
+  email text not null,
   name text,
   avatar text,
   phone text,
@@ -17,6 +17,8 @@ create table if not exists public.profiles (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+create unique index if not exists profiles_email_lower_idx on public.profiles (lower(email));
 
 alter table public.profiles enable row level security;
 
@@ -48,8 +50,10 @@ create policy "profiles_update"
   )
   with check (
     lower(coalesce(auth.jwt() ->> 'email', '')) = lower('DavidAlejandroRoblesMarquez@gmail.com')
-    or (auth.uid() = id and role = 'unassigned')
-    or (auth.uid() = id and lower(email) = lower('DavidAlejandroRoblesMarquez@gmail.com'))
+    or (
+      auth.uid() = id
+      and role is not distinct from (select p.role from public.profiles p where p.id = auth.uid())
+    )
   );
 
 drop policy if exists "profiles_delete" on public.profiles;
