@@ -9,9 +9,9 @@ export const PRODUCTION_VERCEL_HOST =
 export const DEFAULT_SUPABASE_URL = 'https://wqejnlkquytobynefgij.supabase.co';
 export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_UyqriemBbZISFZZMBu0qdw_o8ACXjib';
 export const DEFAULT_GOOGLE_CLIENT_ID =
-  '1052739078825-vhbkiscvgt7otbeksk7v4sdast7ldr5t.apps.googleusercontent.com';
+  '1052739078382-vhbkiscvgt7otbeksk7v4sdast7ldr5t.apps.googleusercontent.com';
 
-export const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
+export const googleClientId = DEFAULT_GOOGLE_CLIENT_ID;
 
 export function googleRedirectUri(): string {
   return `${window.location.origin}${GOOGLE_CALLBACK_PATH}`;

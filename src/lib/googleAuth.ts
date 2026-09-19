@@ -1,6 +1,6 @@
-import { DEFAULT_GOOGLE_CLIENT_ID } from './authConfig';
+import { googleClientId } from './authConfig';
 
-export const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
+export { googleClientId };
 
 const TOKEN_KEY = 'sofer-google-id-token';
 const ERROR_KEY = 'sofer-google-id-error';
