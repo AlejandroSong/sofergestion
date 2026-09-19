@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { googleClientId, googleRedirectUri, isAndroidWebView } from './authConfig';
 
 export { googleClientId, isAndroidWebView };
@@ -6,6 +7,12 @@ const TOKEN_KEY = 'sofer-google-id-token';
 const ERROR_KEY = 'sofer-google-id-error';
 
 export function isNativeShell(): boolean {
+  try {
+    if (Capacitor.isNativePlatform()) return true;
+    if (Capacitor.getPlatform() !== 'web') return true;
+  } catch {
+    // ignore
+  }
   const cap = (window as Window & {
     Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
   }).Capacitor;

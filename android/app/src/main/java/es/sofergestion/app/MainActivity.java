@@ -1,13 +1,24 @@
 package es.sofergestion.app;
 
+import android.os.Bundle;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        lockWebViewToSingleWindow();
+    }
+
+    @Override
     public void onStart() {
         super.onStart();
+        lockWebViewToSingleWindow();
+    }
+
+    private void lockWebViewToSingleWindow() {
         if (this.bridge == null || this.bridge.getWebView() == null) {
             return;
         }
