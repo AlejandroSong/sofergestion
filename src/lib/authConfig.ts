@@ -13,3 +13,13 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
 export function googleRedirectUri(): string {
   return `${window.location.origin}${GOOGLE_CALLBACK_PATH}`;
 }
+
+export function redirectPreviewToProduction(): boolean {
+  const host = window.location.hostname;
+  if (host === PRODUCTION_HOST || host === 'localhost' || host === '127.0.0.1') return false;
+  if (!host.endsWith('.vercel.app')) return false;
+  window.location.replace(
+    `${PRODUCTION_ORIGIN}${window.location.pathname}${window.location.search}${window.location.hash}`
+  );
+  return true;
+}
