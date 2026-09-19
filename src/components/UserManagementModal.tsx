@@ -82,7 +82,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
   useEffect(() => {
     if (isOpen) void refreshDirectory();
-  }, [isOpen, refreshDirectory]);
+  }, [isOpen]);
 
   const standardSpecialties = [
     'Electricidad y Climatización',

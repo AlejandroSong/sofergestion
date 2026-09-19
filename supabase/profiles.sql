@@ -39,20 +39,65 @@ create unique index if not exists profiles_email_lower_idx on public.profiles (l
 
 create or replace function public.is_app_admin()
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.profiles
     where id = auth.uid()
       and role = 'admin'
       and coalesce(status, 'active') is distinct from 'suspended'
   );
+end;
 $$;
 
 grant execute on function public.is_app_admin() to authenticated, anon;
+
+create or replace function public.assign_profile_role(
+  target_email text,
+  new_role text,
+  new_status text default 'active',
+  new_building_id text default null,
+  new_building_name text default null,
+  new_specialty text default null,
+  new_unit_or_area text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated_id uuid;
+begin
+  if not public.is_app_admin() then
+    raise exception 'Solo un administrador puede asignar roles';
+  end if;
+
+  update public.profiles
+  set
+    role = new_role,
+    status = coalesce(new_status, status),
+    building_id = new_building_id,
+    building_name = new_building_name,
+    specialty = new_specialty,
+    unit_or_area = new_unit_or_area,
+    updated_at = now()
+  where lower(email) = lower(target_email)
+  returning id into updated_id;
+
+  if updated_id is null then
+    raise exception 'No existe un perfil con ese correo';
+  end if;
+
+  return jsonb_build_object('id', updated_id, 'role', new_role);
+end;
+$$;
+
+grant execute on function public.assign_profile_role(text, text, text, text, text, text, text) to authenticated;
 
 alter table public.profiles enable row level security;
 
@@ -192,3 +237,19 @@ drop trigger if exists on_profile_access_request on public.profiles;
 create trigger on_profile_access_request
   after insert on public.profiles
   for each row execute function public.on_profile_access_request();
+
+update public.profiles
+set role = 'admin', status = 'active'
+where id = (
+  select p.id
+  from public.profiles p
+  where not exists (
+    select 1 from public.profiles a
+    where a.role = 'admin'
+      and coalesce(a.status, 'active') is distinct from 'suspended'
+  )
+  order by
+    case when lower(p.email) = 'davidalejandroroblesmarquez@gmail.com' then 0 else 1 end,
+    p.created_at nulls last
+  limit 1
+);

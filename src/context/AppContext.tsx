@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import {
   INITIAL_BUILDINGS,
@@ -319,7 +319,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     if (persisted) {
       void clearRevocation(persisted.email);
-      void persistProfile(persisted);
+      void persistProfile(persisted).then((result) => {
+        if (!result.ok) {
+          showToast(
+            'El rol no se guardó',
+            result.message || 'El cambio se revirtió porque no se pudo escribir en el servidor.',
+            'alert'
+          );
+          void refreshDirectory();
+          return;
+        }
+        showToast('Rol Actualizado', `${persisted.name} ahora es ${persisted.role}.`, 'success');
+      });
+      return;
     }
     showToast('Rol Actualizado', 'Se han actualizado libremente los permisos del usuario', 'success');
   };
@@ -980,7 +992,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  const refreshDirectory = async () => {
+  const refreshDirectory = useCallback(async () => {
     const remote = await fetchProfiles();
     if (!remote.length) return;
     setUsers((prev) => {
@@ -999,7 +1011,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('gest_v2_current_user', JSON.stringify(synced));
       return synced;
     });
-  };
+  }, []);
 
   useEffect(() => {
     const onVisible = () => {

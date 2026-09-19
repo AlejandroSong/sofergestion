@@ -103,28 +103,22 @@ export async function fetchProfiles(): Promise<User[]> {
   return (data as ProfileRow[]).map(profileToUser);
 }
 
-export async function persistProfile(user: User, authUserId?: string) {
-  if (!supabase) return;
-  let id = isUuid(user.id) ? user.id : undefined;
-  if (!id) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', user.email.trim().toLowerCase())
-      .maybeSingle();
-    id = data?.id;
-  }
-  if (!isUuid(id) && isUuid(authUserId)) {
-    const { data: self } = await supabase.auth.getUser();
-    if (self.user?.email?.trim().toLowerCase() === user.email.trim().toLowerCase()) {
-      id = authUserId;
-    }
-  }
-  if (!isUuid(id)) return;
+export async function persistProfile(user: User, authUserId?: string): Promise<{ ok: boolean; message?: string }> {
+  if (!supabase) return { ok: true };
+  const email = user.email.trim().toLowerCase();
 
-  const payload: Record<string, unknown> = {
-    id,
-    email: user.email.trim().toLowerCase(),
+  const { error: rpcError, data: rpcData } = await supabase.rpc('assign_profile_role', {
+    target_email: email,
+    new_role: user.role,
+    new_status: user.status ?? 'active',
+    new_building_id: user.buildingId ?? null,
+    new_building_name: user.buildingName ?? null,
+    new_specialty: user.specialty ?? null,
+    new_unit_or_area: user.unitOrArea ?? null,
+  });
+  if (!rpcError && rpcData) return { ok: true };
+
+  const patch = {
     name: user.name,
     avatar: user.avatar,
     phone: user.phone || null,
@@ -137,8 +131,37 @@ export async function persistProfile(user: User, authUserId?: string) {
     status: user.status ?? 'active',
   };
 
-  const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
-  if (error) console.warn('No se pudo guardar el rol:', error.message);
+  let id = isUuid(user.id) ? user.id : undefined;
+  if (!id) {
+    const { data } = await supabase.from('profiles').select('id, email');
+    const match = (data || []).find((row) => (row.email || '').trim().toLowerCase() === email);
+    id = match?.id;
+  }
+  if (!isUuid(id) && isUuid(authUserId)) {
+    const { data: self } = await supabase.auth.getUser();
+    if (self.user?.email?.trim().toLowerCase() === email) {
+      id = authUserId;
+    }
+  }
+  if (!isUuid(id)) {
+    return {
+      ok: false,
+      message: rpcError?.message || 'No se encontró el perfil de este usuario en Supabase.',
+    };
+  }
+
+  const { error, data } = await supabase.from('profiles').update(patch).eq('id', id).select('id, role');
+  if (error) {
+    console.warn('No se pudo guardar el rol:', error.message);
+    return { ok: false, message: error.message };
+  }
+  if (!data?.length) {
+    return {
+      ok: false,
+      message: rpcError?.message || 'No hay permiso para cambiar este rol. Vuelve a ejecutar supabase/profiles.sql.',
+    };
+  }
+  return { ok: true };
 }
 
 export async function revokeAccess(email: string) {
