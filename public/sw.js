@@ -1,9 +1,11 @@
-const CACHE = 'sofer-gestion-v1';
+const CACHE = 'sofer-gestion-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(['/', '/manifest.webmanifest', '/sofer-logo.jpg']))
+    caches.open(CACHE).then((cache) =>
+      cache.addAll(['/', '/manifest.json', '/icon.png', '/icon-192.png', '/sofer-logo.jpg'])
+    )
   );
 });
 
