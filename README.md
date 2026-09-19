@@ -1,24 +1,26 @@
 # SOFER Gestión
 
-App de administración de edificios (incidencias, finanzas, roles). Acceso solo con Google.
+App de administración de fincas (incidencias, finanzas, roles). Acceso solo con Google.
 
-## URL de Production
+## URL de producción (cliente)
 
-https://sofergestion-davidalejandroroblesmarquez-5406s-projects.vercel.app
+https://sofergestion.es
 
-No uses `sofergestion-8za0q407m.vercel.app` (versión antigua con el callback 500).
-No uses URLs de Preview / Visit (`*-hash.vercel.app`): se redirigen a Production.
+También: https://www.sofergestion.es
 
-En Vercel, **Deployment Protection → Vercel Authentication** debe estar apagado en Production. Si aparece “Request Sent”, el visitante no llega al login de Google.
+Respaldo Vercel: https://sofergestion-davidalejandroroblesmarquez-5406s-projects.vercel.app
+
+No uses `sofergestion-8za0q407m.vercel.app` ni URLs de Preview (`*-hash.vercel.app`): se redirigen a `sofergestion.es`.
+
+En Vercel, **Deployment Protection → Vercel Authentication** debe estar apagado en Production.
 
 ## Qué incluye esta versión
 
-- Login solo con Google (GIS + Supabase `signInWithIdToken`).
-- Cuentas nuevas entran como **sin rol**; el admin las ve y asigna.
-- Paneles por rol (admin, presidente, trabajador, vecino) con permisos: el admin gestiona fincas, contabilidad, nómina, usuarios y catálogo SOFER; el resto no puede crear ni editar lo que no le corresponde.
-- Notificaciones de solicitud de acceso y de incidencias (inbox + panel).
-- El admin puede ceder el rol: el cliente puede quitarte el admin. Solo se protege al **último** administrador.
-- Al eliminar una cuenta se revoca el acceso; no puede volver a entrar con el mismo correo.
+- Login solo con Google.
+- Cuentas nuevas entran **sin rol**; el administrador las asigna.
+- Paneles por rol (admin, presidente, trabajador, vecino).
+- Notificaciones, vivienda, calendario de visitas y catálogo SOFER.
+- Arranque **sin fincas de demostración**: el administrador registra las comunidades reales.
 
 ## Local
 
@@ -31,13 +33,15 @@ Copia `.env.example` a `.env.local` con `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON
 
 ## Google Cloud
 
-Orígenes de JavaScript:
+Orígenes de JavaScript y URIs de redirección:
 
+- `https://sofergestion.es`
+- `https://www.sofergestion.es`
 - `https://sofergestion-davidalejandroroblesmarquez-5406s-projects.vercel.app`
 - `http://localhost:3000`
 
 ## Supabase
 
-En el SQL Editor ejecuta **todo** `supabase/profiles.sql` (perfiles, columnas, RLS, `is_app_admin`, `assign_profile_role`, revocaciones y notificaciones).
+En el SQL Editor ejecuta **todo** `supabase/profiles.sql`.
 
-Site URL de Auth = la URL de Production.
+Site URL de Auth = `https://sofergestion.es`.

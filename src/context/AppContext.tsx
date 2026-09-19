@@ -1,19 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import {
-  INITIAL_BUILDINGS,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_TICKETS,
-  INITIAL_TRANSACTIONS,
-  INITIAL_USERS,
-  INITIAL_WORKER_PAYOUTS,
   INITIAL_NEIGHBOR_SERVICES,
-  INITIAL_NEIGHBOR_REQUESTS,
+  INITIAL_USERS,
+  stripDemoBuildings,
+  stripDemoNotifications,
+  stripDemoPayouts,
+  stripDemoRequests,
+  stripDemoTickets,
+  stripDemoTransactions,
 } from '../data/initialData';
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isLastActiveAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
-import { fetchInbox, insertInbox, insertInboxMany, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
-import { buildIncidentWave } from '../utils/incidentSimulation';
+import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
 import { clearRevocation, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, upsertProfile } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
@@ -104,7 +103,6 @@ interface AppContextType {
   revokeBuildingAssignment: (userId: string) => void;
   deleteUser: (id: string) => void;
   restoreAccess: (email: string) => Promise<void>;
-  switchRole: (role: Role, userId?: string) => void;
   loginWithEmail: (email: string, password?: string) => Promise<{ success: boolean; message?: string }>;
   loginWithGoogle: (googleData: { id?: string; name: string; email: string; avatar?: string; role?: Role; buildingId?: string; specialty?: string }) => { success: boolean; message?: string };
   signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
@@ -209,7 +207,6 @@ interface AppContextType {
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   unreadCount: number;
-  simulateBuildingAlertWave: (count?: number) => void;
 
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
@@ -909,38 +906,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: Building[] = JSON.parse(saved);
-        return parsed.map((b) => {
-          const initB = INITIAL_BUILDINGS.find((ib) => ib.id === b.id);
-          return {
-            ...b,
-            commonAreas:
-              b.commonAreas && b.commonAreas.length > 0 ? b.commonAreas : initB?.commonAreas || [],
-            floorUtilityBills:
-              b.floorUtilityBills && b.floorUtilityBills.length > 0
-                ? b.floorUtilityBills
-                : initB?.floorUtilityBills || [],
-          };
-        });
+        return stripDemoBuildings(parsed).map((b) => ({
+          ...b,
+          commonAreas: b.commonAreas || [],
+          floorUtilityBills: b.floorUtilityBills || [],
+        }));
       } catch (e) {
         console.error('Error parsing buildings from localStorage', e);
       }
     }
-    return INITIAL_BUILDINGS;
+    return [];
   });
 
   const [tickets, setTickets] = useState<Ticket[]>(() => {
     const saved = localStorage.getItem('gest_v2_tickets');
-    return saved ? JSON.parse(saved) : INITIAL_TICKETS;
+    return saved ? stripDemoTickets(JSON.parse(saved)) : [];
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('gest_v2_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    return saved ? stripDemoTransactions(JSON.parse(saved)) : [];
   });
 
   const [workerPayouts, setWorkerPayouts] = useState<WorkerPayout[]>(() => {
     const saved = localStorage.getItem('gest_v2_worker_payouts');
-    return saved ? JSON.parse(saved) : INITIAL_WORKER_PAYOUTS;
+    return saved ? stripDemoPayouts(JSON.parse(saved)) : [];
   });
 
   const [neighborServices, setNeighborServices] = useState<NeighborService[]>(() => {
@@ -966,26 +956,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const existingIds = new Set(parsed.map((r: any) => r.id));
-          const newOnes = INITIAL_NEIGHBOR_REQUESTS.filter((r) => !existingIds.has(r.id));
-          return [...parsed, ...newOnes];
-        }
-      } catch (e) {
-        return INITIAL_NEIGHBOR_REQUESTS;
+        return Array.isArray(parsed) ? stripDemoRequests(parsed) : [];
+      } catch {
+        return [];
       }
     }
-    return INITIAL_NEIGHBOR_REQUESTS;
+    return [];
   });
 
   const [notifications, setNotifications] = useState<PushNotification[]>(() => {
     const saved = localStorage.getItem('gest_v2_notifications');
     const parsed: PushNotification[] = saved ? JSON.parse(saved) : [];
-    const seed = isSupabaseConfigured
-      ? parsed.filter((n) => !/^notif-\d$/.test(n.id) && !n.message?.includes('Isabel Ferrer'))
-      : parsed.length
-      ? parsed
-      : INITIAL_NOTIFICATIONS;
+    const seed = stripDemoNotifications(parsed);
     const current = (() => {
       try {
         const raw = localStorage.getItem('gest_v2_current_user');
@@ -1110,34 +1092,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return [notif, ...prev].slice(0, 120);
     });
     void insertInbox(notif);
-  };
-
-  const simulateBuildingAlertWave = (count = 24) => {
-    if (currentUser.role !== 'admin') {
-      deny('Solo el administrador puede lanzar la prueba de avisos.');
-      return;
-    }
-    if (!buildings.length) {
-      deny('No hay edificios para simular incidencias.');
-      return;
-    }
-    const size = Math.min(40, Math.max(8, count));
-    const wave = buildIncidentWave(buildings, tickets.length, size);
-    setTickets((prev) => [...wave.tickets, ...prev]);
-    wave.notifications.forEach((n, i) => {
-      window.setTimeout(() => {
-        setNotifications((prev) => {
-          if (prev.some((x) => x.id === n.id)) return prev;
-          return [n, ...prev].slice(0, 120);
-        });
-      }, i * 160);
-    });
-    void insertInboxMany(wave.notifications);
-    showToast(
-      'Oleada de avisos',
-      `${wave.notifications.length} vecinos están reportando incidencias. Abre la campana.`,
-      'alert'
-    );
   };
 
   useEffect(() => {
@@ -1360,11 +1314,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Switch role handler
-  const switchRole = (_role: Role, _userId?: string) => {
-    deny('No se puede suplantar otro rol. Cada usuario entra solo con el permiso que le asignó el administrador.');
   };
 
   // Building Actions
@@ -2846,7 +2795,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         revokeBuildingAssignment,
         deleteUser,
         restoreAccess,
-        switchRole,
         loginWithEmail,
         loginWithGoogle,
         signInWithGoogle,
@@ -2902,7 +2850,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markNotificationAsRead,
         markAllNotificationsAsRead,
         unreadCount,
-        simulateBuildingAlertWave,
         soundEnabled,
         setSoundEnabled,
         accessibleBuildings,

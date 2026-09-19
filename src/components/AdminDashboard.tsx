@@ -30,7 +30,6 @@ import {
   Tag,
   AlertTriangle,
   Sparkles,
-  Bell,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { exportAccountingToExcel, exportBuildingsPortfolioToExcel, exportTicketsToExcel, formatCurrency } from '../utils/exportUtils';
@@ -76,7 +75,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     deleteTransaction,
     deleteWorkerPayout,
     resetAllOperations,
-    simulateBuildingAlertWave,
     setTicketPriority,
     setTicketsPriority,
     adminInboxTarget,
@@ -86,8 +84,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [buildingSearch, setBuildingSearch] = useState('');
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
-
-  const [alertWaveRunning, setAlertWaveRunning] = useState(false);
   const [selectedBuildingToAdjust, setSelectedBuildingToAdjust] = useState<Building | null>(null);
   const [buildingToEdit, setBuildingToEdit] = useState<Building | null>(null);
   const [buildingToAssign, setBuildingToAssign] = useState<Building | null>(null);
@@ -340,25 +336,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Building2 className="w-6 h-6" />
               </div>
               <span className="text-xs font-bold text-[#16202E] text-center">Mis edificios</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={alertWaveRunning}
-              onClick={() => {
-                if (alertWaveRunning) return;
-                setAlertWaveRunning(true);
-                simulateBuildingAlertWave(24);
-                window.setTimeout(() => setAlertWaveRunning(false), 24 * 160 + 800);
-              }}
-              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-red-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group disabled:opacity-60"
-            >
-              <div className="p-3 bg-red-50 text-red-600 rounded-xl group-hover:scale-110 transition-transform">
-                <Bell className="w-6 h-6" />
-              </div>
-              <span className="text-xs font-bold text-[#16202E] text-center">
-                {alertWaveRunning ? 'Enviando avisos…' : 'Simular avisos'}
-              </span>
             </button>
           </>
         )}

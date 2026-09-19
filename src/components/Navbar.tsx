@@ -233,31 +233,36 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
             <div className="flex items-center gap-2 truncate">
               <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
               <span className="truncate">
-                {currentUser.role === 'admin' && (
-                  <strong>Permiso Absoluto (Admin):</strong>
-                )}
+                {currentUser.role === 'admin' && <strong>Administrador de fincas:</strong>}
                 {currentUser.role === 'president' && (
-                  <strong>Presidente & Vecino ({currentUser.buildingName} • {currentUser.unitOrArea || 'Ático 4ª B'}):</strong>
+                  <strong>
+                    Presidente
+                    {currentUser.buildingName ? ` · ${currentUser.buildingName}` : ''}
+                    {currentUser.unitOrArea ? ` · ${currentUser.unitOrArea}` : ''}:
+                  </strong>
                 )}
                 {currentUser.role === 'worker' && (
-                  <strong>Trabajador / Operario ({currentUser.specialty}):</strong>
+                  <strong>Trabajador{currentUser.specialty ? ` · ${currentUser.specialty}` : ''}:</strong>
+                )}
+                {currentUser.role === 'neighbor' && (
+                  <strong>
+                    Vecino
+                    {currentUser.buildingName ? ` · ${currentUser.buildingName}` : ''}
+                    {currentUser.unitOrArea ? ` · ${currentUser.unitOrArea}` : ''}:
+                  </strong>
                 )}
                 <span className="ml-1 text-[#5A6B82]">
                   {currentUser.role === 'admin' &&
-                    'Acceso total a inmuebles, contabilidad, gestión exclusiva de nóminas a operarioes y incidencias consolidados.'}
+                    'Gestión de inmuebles, contabilidad, nóminas, usuarios e incidencias.'}
                   {currentUser.role === 'president' &&
-                    'Supervisión del edificio y caja de reparaciones, gestión de su propia vivienda y cuotas, y catálogo de servicios SOFER.'}
+                    'Supervisión de tu comunidad, caja de reparaciones, vivienda y servicios SOFER.'}
                   {currentUser.role === 'worker' &&
-                    'Visualización de cajas de todos los edificios, registro de gastos en caja durante la reparación y cierre de incidencias.'}
+                    'Incidencias asignadas, visitas y cierre de partes de trabajo.'}
                   {currentUser.role === 'neighbor' &&
-                    'Acceso a cuotas de tu vivienda, incidencias comunitarias, recibos oficiales y contratación de Servicios SOFER.'}
+                    'Cuotas de tu vivienda, incidencias, recibos y servicios SOFER.'}
                 </span>
               </span>
             </div>
-
-            <span className="text-[11px] font-mono uppercase bg-[#161616] px-2 py-0.5 rounded border border-[#E2E8F0] text-[#16202E] shrink-0 ml-2 hidden sm:inline-block">
-              Rol: {currentUser.role}
-            </span>
           </div>
         </div>
       </header>

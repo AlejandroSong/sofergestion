@@ -205,15 +205,13 @@ const MainAppContent: React.FC = () => {
       {/* Footer */}
       <footer className="border-t border-[#E2E8F0] bg-[#F4F6FA] py-4 text-center text-xs text-[#5A6B82]">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <p>
-            © {new Date().getFullYear()} SOFER Gestión • Multi-Inmueble RBAC
-          </p>
+          <p>© {new Date().getFullYear()} SOFER Gestión · sofergestion.es</p>
           <div className="flex items-center gap-4 text-[#5A6B82]">
-            <span className="text-[#5A6B82]">Admin</span>
+            <span>Administración de fincas</span>
             <span>•</span>
-            <span className="text-[#5A6B82]">Presidentes de Edificio</span>
+            <span>Comunidades</span>
             <span>•</span>
-            <span className="text-[#5A6B82]">Trabajadores</span>
+            <span>Mantenimiento</span>
           </div>
         </div>
       </footer>
