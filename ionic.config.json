@@ -1,0 +1,8 @@
+{
+  "name": "sofer-gestion",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "custom",
+  "id": "0084a17f"
+}

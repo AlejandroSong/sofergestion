@@ -11,7 +11,8 @@
     "lint": "tsc --noEmit",
     "mobile:sync": "vite build && npx cap sync",
     "mobile:android": "npm run mobile:sync && npx cap open android",
-    "mobile:ios": "npm run mobile:sync && npx cap open ios"
+    "mobile:ios": "npm run mobile:sync && npx cap open ios",
+    "appflow:build": "vite build"
   },
   "allowScripts": {
     "@google/genai": true,
