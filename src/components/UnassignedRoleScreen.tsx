@@ -19,19 +19,7 @@ export const UnassignedRoleScreen: React.FC = () => {
 
   const handleRefresh = async () => {
     await refreshDirectory();
-    const savedUsers = localStorage.getItem('gest_v2_users');
-    if (savedUsers) {
-      const parsed = JSON.parse(savedUsers);
-      const updated = parsed.find(
-        (u: { email?: string; role?: string }) =>
-          (u.email || '').toLowerCase() === currentUser.email.toLowerCase()
-      );
-      if (updated && updated.role !== 'unassigned') {
-        window.location.reload();
-        return;
-      }
-    }
-    showToast('Estado Verificado', 'Tu cuenta aún está pendiente de asignación por el Administrador.', 'info');
+    showToast('Estado Verificado', 'Si el administrador ya te asignó un rol, entrarás al panel en unos segundos.', 'info');
   };
 
   return (

@@ -80,13 +80,15 @@ const MainAppContent: React.FC = () => {
             onOpenCreateTicket={() => setIsCreateTicketOpen(true)}
             onOpenAddTransaction={() => setIsAddTransactionOpen(true)}
           />
-        ) : (currentUser.role === 'admin' || currentUser.role === 'worker') ? (
+        ) : currentUser.role === 'admin' ? (
           <AdminDashboard
             onOpenAddBuilding={() => setIsAddBuildingOpen(true)}
             onOpenCreateTicket={() => setIsCreateTicketOpen(true)}
             onOpenAddTransaction={() => setIsAddTransactionOpen(true)}
             onOpenReports={() => setIsReportsOpen(true)}
           />
+        ) : currentUser.role === 'worker' ? (
+          <WorkerDashboard />
         ) : currentUser.role === 'president' ? (
           <PresidentDashboard 
             onOpenCreateTicket={() => {
@@ -156,7 +158,7 @@ const MainAppContent: React.FC = () => {
             <span>•</span>
             <span className="text-[#5A6B82]">Presidentes de Edificio</span>
             <span>•</span>
-            <span className="text-[#5A6B82]">Trabajadors & Trabajadores</span>
+            <span className="text-[#5A6B82]">Trabajadores</span>
           </div>
         </div>
       </footer>

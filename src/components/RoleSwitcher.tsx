@@ -4,21 +4,18 @@ import {
   UserCheck,
   Wrench,
   ChevronDown,
-  Check,
   Building2,
   LogOut,
   UserCog,
   Mail,
-  Lock,
   Shield,
-  HelpCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Role } from '../types';
 import { UserManagementModal } from './UserManagementModal';
 
 export const RoleSwitcher: React.FC = () => {
-  const { currentUser, allUsers, switchRole, logout } = useApp();
+  const { currentUser, allUsers, logout } = useApp();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isUserMgmtOpen, setIsUserMgmtOpen] = useState(false);
 
@@ -86,6 +83,8 @@ export const RoleSwitcher: React.FC = () => {
                   ? `Trabajador • ${currentUser.specialty || 'General'}`
                   : currentUser.role === 'admin'
                   ? 'Administrador de fincas'
+                  : currentUser.role === 'neighbor'
+                  ? `Vecino • ${currentUser.buildingName || 'Edificio'}`
                   : 'Pendiente de Asignación'}
               </span>
             </div>
@@ -163,39 +162,6 @@ export const RoleSwitcher: React.FC = () => {
                 )}
               </div>
 
-              {/* NON-ADMIN SECURITY NOTICE & RETURN TO ADMIN OPTION */}
-              {!isAdmin && (
-                <div className="mx-2 mb-2 p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-[#0A2E6D] space-y-2">
-                  <div className="flex items-center justify-between font-semibold">
-                    <span className="flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 text-[#0A2E6D]" />
-                      Sesión de Simulación
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const adminUser = allUsers.find(
-                        (u) => u.role === 'admin' && u.status !== 'suspended'
-                      );
-                      if (adminUser) {
-                        switchRole('admin', adminUser.id);
-                      } else {
-                        switchRole('admin');
-                      }
-                      setDropdownOpen(false);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg bg-[#0A2E6D] hover:bg-[#082456] text-white text-xs font-bold flex items-center justify-between transition-colors cursor-pointer shadow-xs"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      Regresar a Administrador
-                    </span>
-                    <span className="text-[9px] bg-white/20 px-1 py-0.5 rounded">Admin</span>
-                  </button>
-                </div>
-              )}
-
-              {/* ADMIN ACTIONS: Open User & Role Management */}
               {isAdmin && (
                 <div className="px-2 pb-2 mb-2 border-b border-[#E2E8F0]">
                   <button
@@ -215,64 +181,6 @@ export const RoleSwitcher: React.FC = () => {
                   </button>
                 </div>
               )}
-
-              {/* ROLE AUDIT / PROFILE SWITCHER: Available across roles for easy testing and role switching */}
-              <div className="px-1.5">
-                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#5A6B82] flex items-center justify-between">
-                  <span>Cambiar de Perfil / Rol</span>
-                  <span className="text-[9px] text-[#0A2E6D] font-semibold lowercase">simulador</span>
-                </div>
-
-                <div className="max-h-52 overflow-y-auto space-y-1">
-                  {allUsers
-                    .filter((u) => u.status !== 'suspended')
-                    .map((user) => {
-                      const isSelected = user.id === currentUser.id;
-                      return (
-                        <button
-                          key={user.id}
-                          onClick={() => {
-                            switchRole(user.role, user.id);
-                            setDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-2 py-1.5 rounded-xl flex items-center justify-between text-xs transition-colors cursor-pointer ${
-                            isSelected
-                              ? 'bg-blue-50 text-[#0A2E6D] font-bold border border-blue-200'
-                              : 'hover:bg-slate-100 text-[#5A6B82] hover:text-[#16202E]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <img
-                              src={user.avatar}
-                              alt={user.name}
-                              className="w-6 h-6 rounded-full object-cover shrink-0 border border-[#E2E8F0]"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div className="truncate">
-                              <span className="font-semibold text-[#16202E] truncate text-xs block">
-                                {user.name}
-                              </span>
-                              <span className="text-[9px] text-[#5A6B82] truncate block">
-                                {user.role === 'admin'
-                                  ? 'Administrador'
-                                  : user.role === 'president'
-                                  ? `Presidente (${user.buildingName || 'Sin Edificio'})`
-                                  : user.role === 'worker'
-                                  ? `Trabajador (${user.specialty || 'General'})`
-                                  : user.role === 'neighbor'
-                                  ? `Vecino (${user.buildingName || 'Edificio'} • ${user.unitOrArea || 'Vivienda'})`
-                                  : 'Sin Rol'}
-                              </span>
-                            </div>
-                          </div>
-                          {isSelected && (
-                            <Check className="w-3.5 h-3.5 text-[#0A2E6D] shrink-0 ml-1" />
-                          )}
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
 
               {/* Logout button */}
               <div className="mt-2 pt-2 border-t border-[#E2E8F0] px-2">

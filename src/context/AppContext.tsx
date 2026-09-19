@@ -1058,9 +1058,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated || currentUser.role !== 'admin') return;
+    if (!isAuthenticated) return;
+    if (currentUser.role !== 'admin' && currentUser.role !== 'unassigned') return;
     const tick = () => {
       void refreshDirectory();
+      if (currentUser.role !== 'admin') return;
       void fetchInbox().then((items) => {
         if (!items.length) return;
         setNotifications((prev) => {

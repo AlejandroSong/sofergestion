@@ -1,7 +1,7 @@
 import { User } from '../types';
 
-export const ACCOUNTS_RESET_KEY = 'gest_v3_accounts';
-export const ACCOUNTS_RESET_VALUE = 'david-only-v2';
+export const ACCOUNTS_RESET_KEY = 'gest_v4_accounts';
+export const ACCOUNTS_RESET_VALUE = 'roles-handoff-v1';
 
 export const ADMIN_USER: User = {
   id: 'usr-adm-99',
