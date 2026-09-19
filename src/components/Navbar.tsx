@@ -22,9 +22,10 @@ interface NavbarProps {
   onOpenReports: () => void;
   onOpenCreateTicket: () => void;
   onOpenAddBuilding: () => void;
+  onOpenSoferServices?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBuilding, onOpenReports }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBuilding, onOpenReports, onOpenSoferServices }) => {
   const {
     currentUser,
     unreadCount,
@@ -85,6 +86,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
                   onClick={() => {
                     setSelectedBuildingId(null);
                     setActiveTab('buildings');
+                    window.setTimeout(() => {
+                      document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 50);
                   }}
                   className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                     activeTab === 'buildings'
@@ -150,6 +154,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
                 <button
                   onClick={() => {
                     setSelectedBuildingId(null);
+                    if (currentUser.role === 'admin' && onOpenSoferServices) {
+                      onOpenSoferServices();
+                      return;
+                    }
                     setActiveTab('servicios');
                   }}
                   className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -160,9 +168,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenCreateTicket, onOpenAddBui
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                   <span>Servicios SOFER</span>
-                  <span className="text-[10px] bg-amber-400/30 text-amber-200 px-1.5 py-0.2 rounded font-bold uppercase hidden sm:inline">
-                    Admin
-                  </span>
                 </button>
               )}
 

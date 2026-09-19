@@ -24,7 +24,9 @@ import {
   Receipt,
   Layers,
   Flame,
-  FileText,
+    FileText,
+    Pencil,
+    Trash2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -39,6 +41,8 @@ import { CommonAreasManager } from './CommonAreasManager';
 import { FloorUtilityBillsManager } from './FloorUtilityBillsManager';
 import { InsuranceManager } from './InsuranceManager';
 import { ExceptionalExpensesManager } from './ExceptionalExpensesManager';
+import { AddBuildingModal } from './AddBuildingModal';
+import { AssignPresidentModal } from './AssignPresidentModal';
 
 interface BuildingDetailViewProps {
   buildingId: string;
@@ -59,6 +63,8 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
     transactions,
     currentUser,
     setSelectedTicketId,
+    resetBuildingOperations,
+    deleteTicket,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'accounting' | 'tickets' | 'common_areas' | 'floor_utilities' | 'insurance' | 'exceptional_expenses'>('accounting');
@@ -66,6 +72,8 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
   const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
 
   const building = getBuildingById(buildingId);
   if (!building) return null;
@@ -187,6 +195,27 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
               Asentar Movimiento
             </button>
           )}
+          {currentUser.role === 'admin' && (
+            <>
+              <button
+                onClick={() => setIsEditOpen(true)}
+                className="px-3 py-2 bg-white border border-[#CBD5E1] rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Editar finca
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('Esto pondrá a cero balances, cuotas de vecinos e incidencias de este edificio. ¿Continuar?')) {
+                    resetBuildingOperations(building.id);
+                  }
+                }}
+                className="px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Empezar de 0
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -238,13 +267,19 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
           <div>
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] uppercase tracking-wider font-bold text-[#0A2E6D] bg-[#0A2E6D]/15 px-2 py-0.5 rounded border border-[#0A2E6D]/30">
-                Presidente Asignado
+                Presidente
               </span>
-              <User className="w-4 h-4 text-[#0A2E6D]" />
+              {currentUser.role === 'admin' && (
+                <button type="button" onClick={() => setIsAssignOpen(true)} className="text-[11px] font-bold text-[#0A2E6D] hover:underline cursor-pointer">
+                  Asignar
+                </button>
+              )}
             </div>
 
             <h3 className="text-lg font-bold text-[#16202E]">{building.presidentName}</h3>
-            <p className="text-xs text-[#5A6B82] mt-0.5">Responsable del Inmueble & Incidencias</p>
+            <p className="text-xs text-[#5A6B82] mt-0.5">
+              {building.presidentUnitOrArea || 'Vivienda pendiente de registrar'}
+            </p>
 
             <div className="mt-4 space-y-2 text-xs">
               <a
@@ -632,10 +667,9 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
                 filteredTickets.map((tkt) => (
                   <div
                     key={tkt.id}
-                    onClick={() => setSelectedTicketId(tkt.id)}
-                    className="p-4 rounded-xl border border-[#282828] hover:border-[#0A2E6D]/50 transition-all bg-[#171717] cursor-pointer flex flex-col justify-between"
+                    className="p-4 rounded-xl border border-[#282828] hover:border-[#0A2E6D]/50 transition-all bg-[#171717] flex flex-col justify-between"
                   >
-                    <div>
+                    <div onClick={() => setSelectedTicketId(tkt.id)} className="cursor-pointer">
                       <div className="flex items-center justify-between gap-1 mb-2">
                         <span className="font-mono text-[11px] font-bold text-[#0A2E6D] bg-[#0A2E6D]/15 px-2 py-0.5 rounded border border-[#0A2E6D]/30">
                           {tkt.ticketNumber}
@@ -661,9 +695,23 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
 
                     <div className="mt-4 pt-3 border-t border-[#E2E8F0] flex items-center justify-between text-[11px] text-[#5A6B82]">
                       <span>Piso {tkt.floor} • {tkt.unitOrArea}</span>
-                      <span className="font-semibold text-[#D1D5DB]">
-                        {tkt.assignedWorkerName || 'Sin asignar'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-[#D1D5DB]">
+                          {tkt.assignedWorkerName || 'Sin asignar'}
+                        </span>
+                        {currentUser.role === 'admin' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(`¿Eliminar la incidencia ${tkt.ticketNumber}?`)) deleteTicket(tkt.id);
+                            }}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -712,6 +760,8 @@ export const BuildingDetailView: React.FC<BuildingDetailViewProps> = ({
         isOpen={isAdjustModalOpen}
         onClose={() => setIsAdjustModalOpen(false)}
       />
+      <AddBuildingModal isOpen={isEditOpen} building={building} onClose={() => setIsEditOpen(false)} />
+      <AssignPresidentModal isOpen={isAssignOpen} building={building} onClose={() => setIsAssignOpen(false)} />
     </div>
   );
 };

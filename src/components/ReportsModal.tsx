@@ -13,6 +13,7 @@ import {
   Copy,
   Check,
   Share2,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -29,7 +30,7 @@ interface ReportsModalProps {
 }
 
 export const ReportsModal: React.FC<ReportsModalProps> = ({ isOpen, onClose }) => {
-  const { buildings, tickets, transactions, currentUser } = useApp();
+  const { buildings, tickets, transactions, currentUser, resetBuildingOperations, resetAllOperations, deleteTicket, deleteTransaction, deleteNeighborRequest, neighborRequests } = useApp();
 
   const [reportType, setReportType] = useState<'financial' | 'maintenance' | 'worker' | 'docs'>('financial');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
@@ -219,6 +220,57 @@ Documento auditado y generado automáticamente para Google Docs.
               />
             </div>
           </div>
+
+          {currentUser.role === 'admin' && (
+            <div className="mb-4 p-3 rounded-xl border border-red-100 bg-red-50/60 space-y-2 shrink-0">
+              <p className="text-[11px] font-bold text-red-800 uppercase">Control de administrador</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedBuildingId === 'all') {
+                      if (confirm('Esto pondrá a cero TODOS los balances, movimientos, incidencias y solicitudes. ¿Continuar?')) {
+                        resetAllOperations();
+                      }
+                      return;
+                    }
+                    if (confirm('¿Poner a cero balances e incidencias de este edificio?')) {
+                      resetBuildingOperations(selectedBuildingId);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-white border border-red-200 text-red-700 cursor-pointer"
+                >
+                  Empezar de 0 {selectedBuildingId === 'all' ? '(todos)' : '(edificio)'}
+                </button>
+              </div>
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {relevantTickets.slice(0, 8).map((t) => (
+                  <div key={t.id} className="flex items-center justify-between text-[11px] bg-white rounded-lg px-2 py-1 border border-[#E2E8F0]">
+                    <span className="truncate">{t.ticketNumber} · {t.title}</span>
+                    <button type="button" onClick={() => { if (confirm(`¿Eliminar ${t.ticketNumber}?`)) deleteTicket(t.id); }} className="text-red-600 p-1 cursor-pointer">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {relevantTransactions.slice(0, 8).map((tx) => (
+                  <div key={tx.id} className="flex items-center justify-between text-[11px] bg-white rounded-lg px-2 py-1 border border-[#E2E8F0]">
+                    <span className="truncate">{tx.description || tx.code} · {formatCurrency(tx.amount)}</span>
+                    <button type="button" onClick={() => { if (confirm('¿Eliminar este movimiento?')) deleteTransaction(tx.id); }} className="text-red-600 p-1 cursor-pointer">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {neighborRequests.filter((r) => selectedBuildingId === 'all' || r.buildingId === selectedBuildingId).slice(0, 6).map((r) => (
+                  <div key={r.id} className="flex items-center justify-between text-[11px] bg-white rounded-lg px-2 py-1 border border-[#E2E8F0]">
+                    <span className="truncate">Solicitud · {r.serviceName || r.id}</span>
+                    <button type="button" onClick={() => deleteNeighborRequest(r.id)} className="text-red-600 p-1 cursor-pointer">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Report Preview Body */}
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">

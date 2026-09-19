@@ -111,6 +111,7 @@ export interface Building {
   presidentName: string;
   presidentPhone: string;
   presidentEmail: string;
+  presidentUnitOrArea?: string;
   image: string;
   monthlyQuotaFee: number;
   repairFund: number; // Dedicated money box for repairs and incidents

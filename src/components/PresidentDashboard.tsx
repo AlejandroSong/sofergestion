@@ -690,16 +690,16 @@ export const PresidentDashboard: React.FC<PresidentDashboardProps> = ({
 
         {/* 3. Servicios SOFER (Admin catalog) */}
         <button
-          onClick={() => setActiveTab('sofer_services')}
+          onClick={() => {
+            setActiveTab('sofer_services');
+            setGlobalActiveTab('servicios');
+          }}
           className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl transition-all cursor-pointer shadow-xs group border relative overflow-hidden ${
             activeTab === 'sofer_services'
               ? 'bg-[#0A2E6D] text-white border-[#0A2E6D] ring-2 ring-amber-400'
               : 'bg-gradient-to-b from-blue-50/50 to-white text-[#0A2E6D] border-blue-200 hover:border-[#0A2E6D]'
           }`}
         >
-          <div className="absolute top-1.5 right-1.5 bg-amber-400 text-[#0A0A0A] text-[9px] font-black uppercase px-1.5 py-0.2 rounded shadow-xs tracking-wider">
-            ADMIN
-          </div>
           <div className={`p-3 rounded-xl transition-transform ${activeTab === 'sofer_services' ? 'bg-white/20' : 'bg-blue-100 text-[#0A2E6D] group-hover:scale-110'}`}>
             <Sparkles className="w-6 h-6 text-amber-500" />
           </div>

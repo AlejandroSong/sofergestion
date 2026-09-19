@@ -15,6 +15,7 @@ import {
   FileDown,
   FileSpreadsheet,
   Send,
+  Trash2,
   MessageSquare,
   ShieldCheck,
   Wrench,
@@ -30,6 +31,7 @@ import { WorkerRepairFundModal } from './WorkerRepairFundModal';
 interface TicketDetailModalProps {
   ticketId: string | null;
   onClose: () => void;
+  isOpen?: boolean;
 }
 
 export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, onClose }) => {
@@ -40,6 +42,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
     allUsers,
     updateTicketStatus,
     assignWorkerToTicket,
+    deleteTicket,
   } = useApp();
 
   const [commentText, setCommentText] = useState('');
@@ -158,6 +161,22 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`¿Eliminar la incidencia ${ticket.ticketNumber}? Esta acción no se puede deshacer.`)) {
+                        deleteTicket(ticket.id);
+                        onClose();
+                      }
+                    }}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200 flex items-center gap-1 text-xs font-medium cursor-pointer"
+                    title="Eliminar incidencia"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span className="hidden sm:inline">Eliminar</span>
+                  </button>
+                )}
                 <button
                   onClick={() => exportTicketDetailPDF(ticket)}
                   className="p-2 text-[#16202E] hover:text-[#0A2E6D] hover:bg-[#E8EFF9] rounded-lg transition-colors border border-[#E2E8F0] flex items-center gap-1 text-xs font-medium cursor-pointer"

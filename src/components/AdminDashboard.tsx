@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Building2,
   Euro,
@@ -38,13 +38,15 @@ import { WorkerPayoutModal } from './WorkerPayoutModal';
 import { AdjustRepairFundModal } from './AdjustRepairFundModal';
 import { UserManagementModal } from './UserManagementModal';
 import { ExpirationAlerts } from './ExpirationAlerts';
-import { NeighborServicesManager } from './NeighborServicesManager';
+import { AddBuildingModal } from './AddBuildingModal';
+import { AssignPresidentModal } from './AssignPresidentModal';
 
 interface AdminDashboardProps {
   onOpenAddBuilding: () => void;
   onOpenCreateTicket: () => void;
   onOpenAddTransaction: () => void;
   onOpenReports: () => void;
+  onOpenSoferServices?: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -52,6 +54,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenCreateTicket,
   onOpenAddTransaction,
   onOpenReports,
+  onOpenSoferServices,
 }) => {
   const {
     currentUser,
@@ -65,12 +68,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSelectedBuildingId,
     setSelectedTicketId,
     deleteBuilding,
+    resetBuildingOperations,
   } = useApp();
 
   const [buildingSearch, setBuildingSearch] = useState('');
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [selectedBuildingToAdjust, setSelectedBuildingToAdjust] = useState<Building | null>(null);
+  const [buildingToEdit, setBuildingToEdit] = useState<Building | null>(null);
+  const [buildingToAssign, setBuildingToAssign] = useState<Building | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'buildings') {
+      document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [activeTab]);
 
   // Incidents board filters
   const [ticketSearch, setTicketSearch] = useState('');
@@ -239,7 +251,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="p-3 bg-teal-50 text-teal-600 rounded-xl group-hover:scale-110 transition-transform">
                 <Building2 className="w-6 h-6" />
               </div>
-              <span className="text-xs font-bold text-[#16202E] text-center">Cajas de Edificios</span>
+              <span className="text-xs font-bold text-[#16202E] text-center">Edificios registrados</span>
             </button>
           </>
         ) : (
@@ -295,9 +307,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
-              onClick={() => {
-                document.getElementById('sofer-services-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
+              onClick={() => onOpenSoferServices?.()}
               className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-amber-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
             >
               <div className="p-3 bg-amber-50 text-amber-600 rounded-xl group-hover:scale-110 transition-transform">
@@ -305,14 +315,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <span className="text-xs font-bold text-[#16202E] text-center">Servicios SOFER</span>
             </button>
+
+            <button
+              onClick={() => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-teal-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
+            >
+              <div className="p-3 bg-teal-50 text-teal-600 rounded-xl group-hover:scale-110 transition-transform">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-[#16202E] text-center">Mis edificios</span>
+            </button>
           </>
         )}
       </div>
 
-      {/* Neighbor Services Management */}
-      <div id="sofer-services-section">
-        <NeighborServicesManager />
-      </div>
+      {currentUser.role === 'admin' && buildings.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {buildings.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => setSelectedBuildingId(b.id)}
+              className="shrink-0 px-3 py-2 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#0A2E6D] text-left cursor-pointer"
+            >
+              <p className="text-xs font-bold text-[#16202E]">{b.name}</p>
+              <p className="text-[10px] text-[#5A6B82]">{b.totalUnits} uds · {b.floors} pisos · {b.monthlyQuotaFee} €/mes</p>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Global Operations & Metrics KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -511,10 +542,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div>
             <h3 className="text-lg font-bold text-[#16202E] flex items-center gap-2">
               <Building2 className="w-5 h-5 text-[#0A2E6D]" />
-              Edificios Administrados & Incidencias Generales ({buildings.length})
+              Edificios registrados ({buildings.length})
             </h3>
             <p className="text-xs text-[#5A6B82]">
-              Supervisa el balance individual, caja para incidencias y estado de incidencias por inmueble.
+              Entra a cada finca para editar unidades, pisos, cuota o asignar presidente.
             </p>
           </div>
 
@@ -631,13 +662,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </p>
                     </div>
 
+                    <div className="flex flex-col gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setBuildingToEdit(bldg)}
+                        className="py-2 bg-white border border-[#CBD5E1] hover:bg-slate-50 text-[#0A2E6D] font-semibold rounded-lg text-xs cursor-pointer"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => setBuildingToAssign(bldg)}
+                        className="py-2 bg-white border border-[#CBD5E1] hover:bg-slate-50 text-[#0A2E6D] font-semibold rounded-lg text-xs cursor-pointer"
+                      >
+                        Presidente
+                      </button>
+                    </div>
                     <button
                       onClick={() => setSelectedBuildingId(bldg.id)}
                       className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <span>Ver Estado de Cuenta & Tickets</span>
+                      <span>Abrir edificio</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`¿Poner a cero balances, cuotas e incidencias de ${bldg.name}?`)) {
+                          resetBuildingOperations(bldg.id);
+                        }
+                      }}
+                      className="w-full py-1.5 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-100 rounded-lg cursor-pointer"
+                    >
+                      Empezar de 0
+                    </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1234,6 +1292,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <UserManagementModal
         isOpen={isUserManagementOpen}
         onClose={() => setIsUserManagementOpen(false)}
+      />
+
+      <AddBuildingModal
+        isOpen={Boolean(buildingToEdit)}
+        building={buildingToEdit}
+        onClose={() => setBuildingToEdit(null)}
+      />
+
+      <AssignPresidentModal
+        isOpen={Boolean(buildingToAssign)}
+        building={buildingToAssign}
+        onClose={() => setBuildingToAssign(null)}
       />
     </div>
   );

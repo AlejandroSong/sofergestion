@@ -135,11 +135,14 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
             </p>
           </div>
           <button
-            onClick={() => setActiveTab('servicios')}
+            onClick={() => {
+              setActiveTab('servicios');
+              setGlobalActiveTab('servicios');
+            }}
             className="z-10 px-5 py-3 bg-amber-400 hover:bg-amber-300 text-[#0A0A0A] font-bold text-xs rounded-xl shadow-lg transition-all transform hover:scale-105 shrink-0 flex items-center gap-2 cursor-pointer"
           >
             <ShoppingBag className="w-4 h-4" />
-            <span>Ver Catálogo SOFER ({availableServices.length} servicios)</span>
+            <span>Ver catálogo de servicios ({availableServices.length})</span>
             <ArrowRight className="w-4 h-4" />
           </button>
           <Sparkles className="absolute -right-6 -bottom-6 w-36 h-36 text-white/5 pointer-events-none" />
@@ -715,16 +718,16 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
 
         {/* Enhanced Prominent Button for SOFER Services */}
         <button 
-          onClick={() => setActiveTab('servicios')}
+          onClick={() => {
+            setActiveTab('servicios');
+            setGlobalActiveTab('servicios');
+          }}
           className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl transition-all cursor-pointer shadow-sm group border relative overflow-hidden ${
             activeTab === 'servicios' 
               ? 'bg-[#0A2E6D] text-white border-[#0A2E6D] ring-2 ring-amber-400' 
               : 'bg-gradient-to-b from-blue-50/60 to-white text-[#0A2E6D] border-blue-200 hover:border-[#0A2E6D]'
           }`}
         >
-          <div className="absolute top-1.5 right-1.5 bg-amber-400 text-[#0A0A0A] text-[9px] font-black uppercase px-1.5 py-0.2 rounded shadow-xs tracking-wider">
-            ADMIN
-          </div>
           <div className={`p-3 rounded-xl transition-transform ${activeTab === 'servicios' ? 'bg-white/20' : 'bg-blue-100 text-[#0A2E6D] group-hover:scale-110'}`}>
             <Sparkles className="w-6 h-6 text-amber-500" />
           </div>

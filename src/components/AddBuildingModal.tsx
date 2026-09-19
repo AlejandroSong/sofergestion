@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Building2, User, Euro, MapPin, Phone, Check } from 'lucide-react';
+import { X, Building2, MapPin, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { Building } from '../types';
 
 interface AddBuildingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  building?: Building | null;
 }
 
-export const AddBuildingModal: React.FC<AddBuildingModalProps> = ({ isOpen, onClose }) => {
-  const { addBuilding, allUsers } = useApp();
+export const AddBuildingModal: React.FC<AddBuildingModalProps> = ({ isOpen, onClose, building }) => {
+  const { addBuilding, updateBuilding } = useApp();
+  const isEdit = Boolean(building);
 
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -17,114 +20,99 @@ export const AddBuildingModal: React.FC<AddBuildingModalProps> = ({ isOpen, onCl
   const [city, setCity] = useState('Madrid');
   const [totalUnits, setTotalUnits] = useState(36);
   const [floors, setFloors] = useState(9);
-  const [presidentName, setPresidentName] = useState('Alejandro Cordero');
-  const [presidentPhone, setPresidentPhone] = useState('+34 688 997 711');
-  const [presidentEmail, setPresidentEmail] = useState('alejandro.cordero@edificio.com');
   const [monthlyQuotaFee, setMonthlyQuotaFee] = useState(85);
-  const [emergencyContact, setEmergencyContact] = useState('+34 912 345 678 (Conserjería 24h)');
-  const [bankAccount, setBankAccount] = useState('BBVA IBAN: ES21 0182 5544 3322 1100 9988');
+  const [emergencyContact, setEmergencyContact] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
   const [image, setImage] = useState(
     'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&auto=format&fit=crop&q=80'
   );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (building) {
+      setName(building.name);
+      setCode(building.code);
+      setAddress(building.address);
+      setCity(building.city);
+      setTotalUnits(building.totalUnits);
+      setFloors(building.floors);
+      setMonthlyQuotaFee(building.monthlyQuotaFee);
+      setEmergencyContact(building.emergencyContact);
+      setBankAccount(building.bankAccount);
+      setImage(building.image);
+      return;
+    }
+    setName('');
+    setCode('');
+    setAddress('');
+    setCity('Madrid');
+    setTotalUnits(36);
+    setFloors(9);
+    setMonthlyQuotaFee(85);
+    setEmergencyContact('');
+    setBankAccount('');
+    setImage('https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&auto=format&fit=crop&q=80');
+  }, [isOpen, building]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const bldgFloors = Number(floors) || 5;
+    const bldgFloors = Number(floors) || 1;
+    const units = Number(totalUnits) || 1;
+    const quota = Number(monthlyQuotaFee);
+    if (Number.isNaN(quota) || quota < 0) return;
 
-    // Generate initial common areas
+    if (isEdit && building) {
+      updateBuilding(building.id, {
+        name: name.trim(),
+        code: code.trim() || building.code,
+        address: address.trim(),
+        city: city.trim(),
+        totalUnits: units,
+        floors: bldgFloors,
+        monthlyQuotaFee: quota,
+        emergencyContact,
+        bankAccount,
+        image,
+      });
+      onClose();
+      return;
+    }
+
     const defaultCommonAreas = [
       {
         id: `ca-${Date.now()}-1`,
-        name: `Garaje Principal & Estacionamiento`,
+        name: 'Garaje Principal & Estacionamiento',
         category: 'garaje' as const,
         locationFloor: 'Sótano -1',
         status: 'disponible' as const,
         description: 'Plazas de garaje numeradas con portón eléctrico.',
         createdAt: new Date().toISOString().slice(0, 10),
       },
-      {
-        id: `ca-${Date.now()}-2`,
-        name: `Comedor Comunitario / Salón de Eventos`,
-        category: 'comedor' as const,
-        locationFloor: 'Planta Baja',
-        status: 'disponible' as const,
-        description: 'Equipado con mesas, cocina de apoyo y climatización.',
-        createdAt: new Date().toISOString().slice(0, 10),
-      },
-      {
-        id: `ca-${Date.now()}-3`,
-        name: `Pasillos y Corredores Principales`,
-        category: 'pasillo' as const,
-        locationFloor: `Pisos 1 al ${bldgFloors}`,
-        status: 'disponible' as const,
-        description: 'Iluminación con sensores de presencia y extintores certificados.',
-        createdAt: new Date().toISOString().slice(0, 10),
-      },
-    ];
-
-    // Generate initial floor utility bills
-    const defaultUtilityBills = [
-      {
-        id: `fub-${Date.now()}-1`,
-        floor: 'Piso 1',
-        serviceType: 'gas' as const,
-        companyName: 'Naturgy Energía',
-        contractNumber: `CTR-GAS-${name.slice(0, 3).toUpperCase()}-01`,
-        contractDate: new Date().toISOString().slice(0, 10),
-        monthlyAmount: 260.0,
-        paymentDayOfMonth: 5,
-        billingFrequency: 'mensual' as const,
-        status: 'activo' as const,
-        notes: 'Calefacción central y agua caliente para el nivel.',
-      },
-      {
-        id: `fub-${Date.now()}-2`,
-        floor: 'Piso 1',
-        serviceType: 'agua' as const,
-        companyName: 'Canal de Isabel II',
-        contractNumber: `CTR-AGUA-${name.slice(0, 3).toUpperCase()}-01`,
-        contractDate: new Date().toISOString().slice(0, 10),
-        monthlyAmount: 140.0,
-        paymentDayOfMonth: 10,
-        billingFrequency: 'mensual' as const,
-        status: 'activo' as const,
-        notes: 'Acometida y contadores individuales.',
-      },
-      {
-        id: `fub-${Date.now()}-3`,
-        floor: 'Piso 1',
-        serviceType: 'internet' as const,
-        companyName: 'Telefónica Movistar',
-        contractNumber: `CTR-NET-${name.slice(0, 3).toUpperCase()}-01`,
-        contractDate: new Date().toISOString().slice(0, 10),
-        monthlyAmount: 65.0,
-        paymentDayOfMonth: 1,
-        billingFrequency: 'mensual' as const,
-        status: 'activo' as const,
-        notes: 'Fibra óptica 1Gbps simétrica para áreas y sistemas.',
-      },
     ];
 
     addBuilding({
-      name,
+      name: name.trim(),
       code: code.trim() || `ED-${name.slice(0, 4).toUpperCase()}`,
-      address,
-      city,
-      totalUnits: Number(totalUnits),
+      address: address.trim(),
+      city: city.trim(),
+      totalUnits: units,
       floors: bldgFloors,
-      presidentId: `user-pres-${Date.now()}`,
-      presidentName,
-      presidentPhone,
-      presidentEmail,
+      presidentId: '',
+      presidentName: 'Sin asignar',
+      presidentPhone: '',
+      presidentEmail: '',
+      presidentUnitOrArea: '',
       image,
-      monthlyQuotaFee: Number(monthlyQuotaFee),
+      monthlyQuotaFee: quota,
+      repairFund: 0,
+      initialRepairFund: 0,
       currency: '€',
       emergencyContact,
       bankAccount,
       commonAreas: defaultCommonAreas,
-      floorUtilityBills: defaultUtilityBills,
+      floorUtilityBills: [],
     });
 
     onClose();
@@ -158,10 +146,12 @@ export const AddBuildingModal: React.FC<AddBuildingModalProps> = ({ isOpen, onCl
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-[#16202E]">
-                    Registrar Nuevo Edificio
+                    {isEdit ? 'Editar Edificio' : 'Registrar Nuevo Edificio'}
                   </h3>
                   <p className="text-xs text-[#5A6B82]">
-                    Añade un inmueble al portafolio de administración con su presidente y cuota.
+                    {isEdit
+                      ? 'Puedes cambiar unidades, pisos y cuota mensual en cualquier momento.'
+                      : 'Registra el inmueble. El presidente se asigna después, con su vivienda y contacto.'}
                   </p>
                 </div>
               </div>
@@ -271,59 +261,12 @@ export const AddBuildingModal: React.FC<AddBuildingModalProps> = ({ isOpen, onCl
                   <input
                     type="number"
                     min="0"
-                    step="50"
+                    step="0.01"
                     value={monthlyQuotaFee}
                     onChange={(e) => setMonthlyQuotaFee(Number(e.target.value))}
                     required
                     className="w-full px-3 py-2 bg-[#F4F6FA] border border-[#E2E8F0] text-[#0A2E6D] rounded-lg text-xs focus:ring-2 focus:ring-[#C2A05E] focus:border-[#0A2E6D] font-semibold"
                   />
-                </div>
-              </div>
-
-              {/* President Information */}
-              <div className="p-3.5 bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] space-y-3">
-                <h4 className="text-xs font-bold text-[#0A2E6D] uppercase tracking-wider flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-[#0A2E6D]" />
-                  Presidente / Responsable del Edificio
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#5A6B82] mb-1">
-                      Nombre Completo
-                    </label>
-                    <input
-                      type="text"
-                      value={presidentName}
-                      onChange={(e) => setPresidentName(e.target.value)}
-                      required
-                      className="w-full px-3 py-1.5 bg-[#F4F6FA] border border-[#E2E8F0] text-[#16202E] rounded-lg text-xs focus:ring-2 focus:ring-[#C2A05E]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#5A6B82] mb-1">
-                      Teléfono Móvil
-                    </label>
-                    <input
-                      type="text"
-                      value={presidentPhone}
-                      onChange={(e) => setPresidentPhone(e.target.value)}
-                      required
-                      className="w-full px-3 py-1.5 bg-[#F4F6FA] border border-[#E2E8F0] text-[#16202E] rounded-lg text-xs focus:ring-2 focus:ring-[#C2A05E]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#5A6B82] mb-1">
-                      Correo Electrónico
-                    </label>
-                    <input
-                      type="email"
-                      value={presidentEmail}
-                      onChange={(e) => setPresidentEmail(e.target.value)}
-                      required
-                      className="w-full px-3 py-1.5 bg-[#F4F6FA] border border-[#E2E8F0] text-[#16202E] rounded-lg text-xs focus:ring-2 focus:ring-[#C2A05E]"
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -362,7 +305,7 @@ export const AddBuildingModal: React.FC<AddBuildingModalProps> = ({ isOpen, onCl
                 </label>
                 <div className="flex items-center gap-2">
                   <input
-                    type="url"
+                    type="text"
                     value={image}
                     onChange={(e) => setImage(e.target.value)}
                     className="w-full px-3 py-2 bg-[#F4F6FA] border border-[#E2E8F0] text-[#16202E] placeholder-[#666666] rounded-lg text-xs focus:ring-2 focus:ring-[#C2A05E]"
@@ -391,7 +334,7 @@ export const AddBuildingModal: React.FC<AddBuildingModalProps> = ({ isOpen, onCl
                   className="px-5 py-2 text-xs font-bold text-[#0A0A0A] bg-[#0A2E6D] hover:bg-[#D4B370] rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   <Check className="w-4 h-4" />
-                  Guardar y Dar de Alta
+                  {isEdit ? 'Guardar cambios' : 'Guardar y Dar de Alta'}
                 </button>
               </div>
             </form>

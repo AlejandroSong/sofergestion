@@ -84,6 +84,8 @@ interface AppContextType {
   addBuilding: (buildingData: Omit<Building, 'id' | 'createdAt'>) => Building;
   updateBuilding: (id: string, buildingData: Partial<Building>) => void;
   deleteBuilding: (id: string) => void;
+  resetBuildingOperations: (buildingId: string) => void;
+  resetAllOperations: () => void;
   getBuildingById: (id: string) => Building | undefined;
   adjustBuildingRepairFund: (buildingId: string, newAmount: number, reason: string) => void;
 
@@ -127,6 +129,7 @@ interface AppContextType {
   ) => void;
   assignWorkerToTicket: (ticketId: string, workerId: string) => void;
   updateTicketDetails: (ticketId: string, updates: Partial<Ticket>) => void;
+  deleteTicket: (ticketId: string) => void;
   registerServiceAccounting: (data: {
     ticketId: string;
     serviceCost: number;
@@ -162,6 +165,7 @@ interface AppContextType {
   neighborRequests: NeighborServiceRequest[];
   createNeighborRequest: (data: Omit<NeighborServiceRequest, 'id' | 'createdAt' | 'status'>) => void;
   updateNeighborRequest: (id: string, status: NeighborServiceRequest['status'], scheduledDate?: string) => void;
+  deleteNeighborRequest: (id: string) => void;
 
   notifications: PushNotification[];
   markNotificationAsRead: (id: string) => void;
@@ -306,7 +310,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role: newRole,
           buildingId: isBuildingRole ? (extra?.buildingId ?? u.buildingId) : undefined,
           buildingName: isBuildingRole ? (extra?.buildingName ?? u.buildingName) : undefined,
-          unitOrArea: isBuildingRole ? (extra?.unitOrArea ?? u.unitOrArea ?? (newRole === 'president' ? 'Planta 4ª Ático B' : 'Vivienda')) : undefined,
+          unitOrArea: isBuildingRole ? (extra?.unitOrArea ?? u.unitOrArea) : undefined,
           monthlyFee: isBuildingRole ? (extra?.monthlyFee ?? u.monthlyFee ?? (newRole === 'president' ? 95 : 85)) : undefined,
           feeBalance: isBuildingRole ? (extra?.feeBalance ?? u.feeBalance ?? 0) : undefined,
           feeFrequency: isBuildingRole ? (u.feeFrequency || 'mensual') : undefined,
@@ -326,6 +330,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
 
     const persisted = newUsers.find((u) => u.id === id);
+    if (persisted?.role === 'president' && persisted.buildingId) {
+      setBuildings((prev) =>
+        prev.map((b) => {
+          if (b.id === persisted.buildingId) {
+            return {
+              ...b,
+              presidentId: persisted.id,
+              presidentName: persisted.name,
+              presidentPhone: persisted.phone,
+              presidentEmail: persisted.email,
+              presidentUnitOrArea: persisted.unitOrArea,
+            };
+          }
+          if (b.presidentId === persisted.id && b.id !== persisted.buildingId) {
+            return {
+              ...b,
+              presidentId: '',
+              presidentName: 'Sin asignar',
+              presidentPhone: '',
+              presidentEmail: '',
+              presidentUnitOrArea: '',
+            };
+          }
+          return b;
+        })
+      );
+    }
     if (
       persisted &&
       (currentUser.id === id ||
@@ -1133,6 +1164,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...buildingData,
       id,
       createdAt: new Date().toISOString().slice(0, 10),
+      repairFund: buildingData.repairFund ?? 0,
+      initialRepairFund: buildingData.initialRepairFund ?? 0,
+      presidentName: buildingData.presidentName?.trim() || 'Sin asignar',
+      presidentPhone: buildingData.presidentPhone || '',
+      presidentEmail: buildingData.presidentEmail || '',
+      presidentId: buildingData.presidentId || '',
     };
 
     setBuildings((prev) => [newBuilding, ...prev]);
@@ -1167,6 +1204,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBuildings((prev) => prev.filter((b) => b.id !== id));
     // Also remove tickets and transactions or keep them isolated
     showToast('Edificio Removido', `El edificio "${bldg.name}" ha sido eliminado del sistema.`, 'alert');
+  };
+
+  const resetBuildingOperations = (buildingId: string) => {
+    const bldg = buildings.find((b) => b.id === buildingId);
+    if (!bldg) return;
+    setTransactions((prev) => prev.filter((t) => t.buildingId !== buildingId));
+    setTickets((prev) => prev.filter((t) => t.buildingId !== buildingId));
+    setNeighborRequests((prev) => prev.filter((r) => r.buildingId !== buildingId));
+    setBuildings((prev) =>
+      prev.map((b) =>
+        b.id === buildingId ? { ...b, repairFund: 0, initialRepairFund: 0, exceptionalExpenses: [] } : b
+      )
+    );
+    setUsers((prev) =>
+      prev.map((u) => (u.buildingId === buildingId ? { ...u, feeBalance: 0 } : u))
+    );
+    showToast(
+      'Balances reiniciados',
+      `Se pusieron a cero cuentas, movimientos e incidencias de ${bldg.name}.`,
+      'alert'
+    );
+  };
+
+  const resetAllOperations = () => {
+    setTransactions([]);
+    setTickets([]);
+    setNeighborRequests([]);
+    setBuildings((prev) =>
+      prev.map((b) => ({ ...b, repairFund: 0, initialRepairFund: 0, exceptionalExpenses: [] }))
+    );
+    setUsers((prev) => prev.map((u) => ({ ...u, feeBalance: 0 })));
+    setSelectedTicketId(null);
+    showToast(
+      'Libro en limpio',
+      'Se eliminaron balances, movimientos, incidencias y solicitudes de todos los edificios.',
+      'alert'
+    );
   };
 
   const getBuildingById = (id: string) => buildings.find((b) => b.id === id);
@@ -1693,6 +1767,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const deleteTicket = (ticketId: string) => {
+    const target = tickets.find((t) => t.id === ticketId);
+    setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+    if (selectedTicketId === ticketId) setSelectedTicketId(null);
+    showToast('Incidencia eliminada', target ? `Se eliminó ${target.ticketNumber}.` : 'La incidencia fue eliminada.', 'alert');
+  };
+
   const registerServiceAccounting = (data: {
     ticketId: string;
     serviceCost: number;
@@ -2060,6 +2141,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const deleteNeighborRequest = (id: string) => {
+    setNeighborRequests((prev) => prev.filter((r) => r.id !== id));
+    showToast('Solicitud eliminada', 'La solicitud de servicio fue borrada.', 'alert');
+  };
+
   // Transaction Actions
   const addTransaction = (data: Omit<Transaction, 'id' | 'code'>): Transaction => {
     const codePrefix = data.type === 'ingreso' ? 'ING' : 'GST';
@@ -2175,6 +2261,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addBuilding,
         updateBuilding,
         deleteBuilding,
+        resetBuildingOperations,
+        resetAllOperations,
         getBuildingById,
         adjustBuildingRepairFund,
         addCommonArea,
@@ -2192,6 +2280,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTicketStatus,
         assignWorkerToTicket,
         updateTicketDetails,
+        deleteTicket,
         registerServiceAccounting,
         addRepairExpenseToTicket,
         transactions,
@@ -2207,6 +2296,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         neighborRequests,
         createNeighborRequest,
         updateNeighborRequest,
+        deleteNeighborRequest,
         notifications,
         markNotificationAsRead,
         markAllNotificationsAsRead,

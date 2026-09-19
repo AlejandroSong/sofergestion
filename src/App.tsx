@@ -15,6 +15,7 @@ import { TicketDetailModal } from './components/TicketDetailModal';
 import { AddBuildingModal } from './components/AddBuildingModal';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { ReportsModal } from './components/ReportsModal';
+import { SoferServicesModal } from './components/SoferServicesModal';
 
 const MainAppContent: React.FC = () => {
   const {
@@ -33,6 +34,7 @@ const MainAppContent: React.FC = () => {
   const [isAddBuildingOpen, setIsAddBuildingOpen] = useState(false);
   const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
+  const [isSoferOpen, setIsSoferOpen] = useState(false);
 
   if (!authReady) {
     return (
@@ -68,6 +70,7 @@ const MainAppContent: React.FC = () => {
         onOpenAddBuilding={() => setIsAddBuildingOpen(true)}
         onOpenAddTransaction={() => setIsAddTransactionOpen(true)}
         onOpenReports={() => setIsReportsOpen(true)}
+        onOpenSoferServices={() => setIsSoferOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -86,6 +89,7 @@ const MainAppContent: React.FC = () => {
             onOpenCreateTicket={() => setIsCreateTicketOpen(true)}
             onOpenAddTransaction={() => setIsAddTransactionOpen(true)}
             onOpenReports={() => setIsReportsOpen(true)}
+            onOpenSoferServices={() => setIsSoferOpen(true)}
           />
         ) : currentUser.role === 'worker' ? (
           <WorkerDashboard />
@@ -146,6 +150,8 @@ const MainAppContent: React.FC = () => {
         isOpen={isReportsOpen}
         onClose={() => setIsReportsOpen(false)}
       />
+
+      <SoferServicesModal isOpen={isSoferOpen} onClose={() => setIsSoferOpen(false)} />
 
       {/* Footer */}
       <footer className="border-t border-[#E2E8F0] bg-[#F4F6FA] py-4 text-center text-xs text-[#5A6B82]">

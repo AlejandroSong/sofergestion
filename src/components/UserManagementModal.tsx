@@ -204,7 +204,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
       buildingId: (editRole === 'president' || editRole === 'neighbor') ? editBuildingId : undefined,
       buildingName: assignedBuildingName,
       specialty: finalSpecialty,
-      unitOrArea: editRole === 'neighbor' ? (editUnitOrArea.trim() || 'Vivienda Principal') : undefined,
+      unitOrArea:
+        editRole === 'neighbor'
+          ? editUnitOrArea.trim() || 'Vivienda Principal'
+          : editRole === 'president'
+          ? editUnitOrArea.trim() || undefined
+          : undefined,
       monthlyFee: editRole === 'neighbor' ? editMonthlyFee : undefined,
     });
 
@@ -959,6 +964,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                             </div>
 
                             {editRole === 'president' && (
+                              <>
                               <div className="sm:col-span-2">
                                 <label className="block text-[11px] font-semibold text-blue-700 mb-1 flex items-center gap-1">
                                   <Building2 className="w-3.5 h-3.5" />
@@ -976,6 +982,17 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                   ))}
                                 </select>
                               </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-blue-700 mb-1">Piso y número de su vivienda</label>
+                                <input
+                                  type="text"
+                                  value={editUnitOrArea}
+                                  onChange={(e) => setEditUnitOrArea(e.target.value)}
+                                  placeholder="Ej. Piso 4 Nº B"
+                                  className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
+                                />
+                              </div>
+                              </>
                             )}
 
                             {editRole === 'neighbor' && (
