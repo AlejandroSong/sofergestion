@@ -763,6 +763,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const currentRoleRef = useRef(currentUser.role);
+  currentRoleRef.current = currentUser.role;
 
   // Sync to localStorage
   useEffect(() => {
@@ -894,7 +896,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           provider,
           status: 'active',
         };
-        await upsertProfile(pendingUser, session.user.id);
+        const result = await upsertProfile(pendingUser, session.user.id);
+        if (result.created) {
+          publishNotification({
+            id: crypto.randomUUID(),
+            title: 'Nueva solicitud de acceso',
+            message: `${pendingUser.name} (${email}) espera que le asignes un rol.`,
+            type: 'system',
+            timestamp: new Date().toISOString(),
+            read: false,
+            targetRoles: ['admin'],
+          });
+        }
         const remote = await fetchProfiles();
         if (!remote.length) return;
         setUsers((prev) => {
@@ -941,7 +954,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!supabase) return;
     const channel = supabase
       .channel('profiles-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+        const row = payload.new as { role?: string; name?: string; email?: string } | undefined;
+        if (
+          payload.eventType === 'INSERT' &&
+          row?.role === 'unassigned' &&
+          currentRoleRef.current === 'admin'
+        ) {
+          showToast(
+            'Nueva solicitud de acceso',
+            `${row.name || row.email} espera que le asignes un rol.`,
+            'info'
+          );
+        }
         void fetchProfiles().then((remote) => {
           if (!remote.length) return;
           setUsers((prev) => {
@@ -983,8 +1008,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           target_roles: string[] | null;
         };
         const notif = remoteToNotification(row);
-        setNotifications((prev) => (prev.some((n) => n.id === notif.id) ? prev : [notif, ...prev]));
-        showToast(notif.title, notif.message, 'info');
+        let added = false;
+        setNotifications((prev) => {
+          if (prev.some((n) => n.id === notif.id || (n.title === notif.title && n.message === notif.message))) {
+            return prev;
+          }
+          added = true;
+          return [notif, ...prev];
+        });
+        if (added && currentRoleRef.current === 'admin') {
+          showToast(notif.title, notif.message, 'info');
+        }
       })
       .subscribe();
     return () => {
@@ -1022,6 +1056,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || currentUser.role !== 'admin') return;
+    const tick = () => {
+      void refreshDirectory();
+      void fetchInbox().then((items) => {
+        if (!items.length) return;
+        setNotifications((prev) => {
+          const known = new Set(prev.map((n) => n.id));
+          const extra = items.filter((n) => !known.has(n.id));
+          return extra.length ? [...extra, ...prev] : prev;
+        });
+      });
+    };
+    const id = window.setInterval(tick, 15000);
+    return () => window.clearInterval(id);
+  }, [isAuthenticated, currentUser.role, refreshDirectory]);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

@@ -59,8 +59,8 @@ function corePayload(user: User, authUserId: string) {
   };
 }
 
-export async function upsertProfile(user: User, authUserId: string) {
-  if (!supabase || !isUuid(authUserId)) return;
+export async function upsertProfile(user: User, authUserId: string): Promise<{ created: boolean }> {
+  if (!supabase || !isUuid(authUserId)) return { created: false };
 
   const isAdmin = user.email.trim().toLowerCase() === ADMIN_USER.email.toLowerCase();
   const { data: existing } = await supabase
@@ -76,8 +76,9 @@ export async function upsertProfile(user: User, authUserId: string) {
     });
     if (error && error.code !== '23505') {
       console.warn('No se pudo crear el perfil:', error.message);
+      return { created: false };
     }
-    return;
+    return { created: !isAdmin };
   }
 
   const { error } = await supabase
@@ -91,6 +92,7 @@ export async function upsertProfile(user: User, authUserId: string) {
   if (error) {
     console.warn('No se pudo actualizar el perfil:', error.message);
   }
+  return { created: false };
 }
 
 export async function fetchProfiles(): Promise<User[]> {
