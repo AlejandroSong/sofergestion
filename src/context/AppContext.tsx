@@ -64,6 +64,7 @@ import {
   NeighborService,
   NeighborServiceRequest,
   AdminInboxTarget,
+  CustomRole,
 } from '../types';
 import {
   playNotificationSound,
@@ -98,8 +99,13 @@ interface AppContextType {
       floor?: string;
       monthlyFee?: number;
       feeBalance?: number;
+      customRoleId?: string;
     }
   ) => void;
+  customRoles: CustomRole[];
+  addCustomRole: (name: string, baseRole: CustomRole['baseRole']) => void;
+  renameCustomRole: (id: string, name: string) => void;
+  deleteCustomRole: (id: string) => void;
   toggleUserStatus: (id: string) => void;
   revokeBuildingAssignment: (userId: string) => void;
   deleteUser: (id: string) => void;
@@ -407,6 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       floor?: string;
       monthlyFee?: number;
       feeBalance?: number;
+      customRoleId?: string;
     }
   ) => {
     if (!canManageUsers(currentUser)) {
@@ -455,6 +462,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
 
     const persisted = newUsers.find((u) => u.id === id);
+    const assignedEmail = (persisted || targetUser)?.email.trim().toLowerCase();
+    if (assignedEmail) {
+      setCustomRoles((prev) =>
+        prev.map((r) => {
+          const without = r.memberEmails.filter((e) => e !== assignedEmail);
+          if (extra?.customRoleId && r.id === extra.customRoleId) {
+            return { ...r, memberEmails: [...without, assignedEmail] };
+          }
+          return { ...r, memberEmails: without };
+        })
+      );
+    }
     if (persisted?.role === 'president' && persisted.buildingId) {
       setBuildings((prev) =>
         prev.map((b) => {
@@ -966,6 +985,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>(() => {
+    const saved = localStorage.getItem('gest_v2_custom_roles');
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [notifications, setNotifications] = useState<PushNotification[]>(() => {
     const saved = localStorage.getItem('gest_v2_notifications');
     const parsed: PushNotification[] = saved ? JSON.parse(saved) : [];
@@ -1011,6 +1041,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   neighborServicesRef.current = neighborServices;
   const neighborRequestsRef = useRef(neighborRequests);
   neighborRequestsRef.current = neighborRequests;
+  const customRolesRef = useRef(customRoles);
+  customRolesRef.current = customRoles;
 
   const applySharedPayload = (key: SharedKey, payload: unknown[]) => {
     const json = stableJson(payload);
@@ -1034,6 +1066,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         break;
       case 'neighbor_requests':
         setNeighborRequests(stripDemoRequests(payload as NeighborServiceRequest[]));
+        break;
+      case 'custom_roles':
+        setCustomRoles(
+          (payload as CustomRole[]).map((r) => ({
+            ...r,
+            memberEmails: Array.isArray(r.memberEmails) ? r.memberEmails : [],
+          }))
+        );
         break;
     }
   };
@@ -1065,6 +1105,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return neighborServicesRef.current;
       case 'neighbor_requests':
         return neighborRequestsRef.current;
+      case 'custom_roles':
+        return customRolesRef.current;
     }
   };
 
@@ -1102,6 +1144,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('gest_v2_neighbor_requests', JSON.stringify(neighborRequests));
     pushSharedPayload('neighbor_requests', neighborRequests);
   }, [neighborRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('gest_v2_custom_roles', JSON.stringify(customRoles));
+    pushSharedPayload('custom_roles', customRoles);
+  }, [customRoles]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_notifications', JSON.stringify(notifications));
@@ -2675,6 +2722,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Servicio añadido', `${newService.name} · ${newService.price} €`, 'success');
   };
 
+  const addCustomRole = (name: string, baseRole: CustomRole['baseRole']) => {
+    if (!canManageUsers(currentUser)) {
+      deny('Solo el administrador puede crear roles.');
+      return;
+    }
+    const label = name.trim();
+    if (!label) {
+      showToast('Falta el nombre', 'Escribe el nombre del nuevo rol.', 'alert');
+      return;
+    }
+    if (customRoles.some((r) => r.name.toLowerCase() === label.toLowerCase())) {
+      showToast('Rol duplicado', 'Ya existe un rol con ese nombre.', 'alert');
+      return;
+    }
+    const next: CustomRole[] = [
+      ...customRoles,
+      { id: `role-${Date.now()}`, name: label, baseRole, memberEmails: [] },
+    ];
+    customRolesRef.current = next;
+    setCustomRoles(next);
+    flushSharedNow('custom_roles', next);
+    showToast('Rol creado', `${label} ya se puede asignar.`, 'success');
+  };
+
+  const renameCustomRole = (id: string, name: string) => {
+    if (!canManageUsers(currentUser)) return;
+    const label = name.trim();
+    if (!label) return;
+    const next = customRoles.map((r) => (r.id === id ? { ...r, name: label } : r));
+    customRolesRef.current = next;
+    setCustomRoles(next);
+    flushSharedNow('custom_roles', next);
+  };
+
+  const deleteCustomRole = (id: string) => {
+    if (!canManageUsers(currentUser)) return;
+    const target = customRoles.find((r) => r.id === id);
+    const next = customRoles.filter((r) => r.id !== id);
+    customRolesRef.current = next;
+    setCustomRoles(next);
+    flushSharedNow('custom_roles', next);
+    showToast('Rol eliminado', target ? `Se quitó ${target.name}.` : 'Rol borrado.', 'info');
+  };
+
   const updateNeighborService = (id: string, updates: Partial<NeighborService>) => {
     if (!canManageSoferCatalog(currentUser)) {
       deny('Solo el administrador puede modificar el catálogo SOFER.');
@@ -2958,6 +3049,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addUser,
         updateUser,
         updateUserRole,
+        customRoles,
+        addCustomRole,
+        renameCustomRole,
+        deleteCustomRole,
         toggleUserStatus,
         revokeBuildingAssignment,
         deleteUser,

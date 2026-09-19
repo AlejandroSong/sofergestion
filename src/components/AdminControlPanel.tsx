@@ -1,15 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Building2, Euro, Plus, Save, Settings2, X } from 'lucide-react';
+import { Building2, Euro, Plus, Save, Settings2, Shield, Trash2, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Role } from '../types';
+import { CustomRole, Role } from '../types';
 
-const ROLE_OPTIONS: { id: Role; label: string }[] = [
-  { id: 'unassigned', label: 'Sin rol' },
-  { id: 'neighbor', label: 'Vecino' },
-  { id: 'president', label: 'Presidente' },
-  { id: 'worker', label: 'Trabajador' },
-  { id: 'admin', label: 'Admin' },
+const SYSTEM_ROLES: { id: Role; label: string; hint: string }[] = [
+  { id: 'admin', label: 'Admin', hint: 'Control total' },
+  { id: 'president', label: 'Presidente', hint: 'Su comunidad' },
+  { id: 'worker', label: 'Trabajador', hint: 'Incidencias y visitas' },
+  { id: 'neighbor', label: 'Vecino', hint: 'Vivienda y cuotas' },
+  { id: 'unassigned', label: 'Sin rol', hint: 'Espera asignación' },
+];
+
+const BASE_ROLE_OPTIONS: { id: CustomRole['baseRole']; label: string }[] = [
+  { id: 'neighbor', label: 'Permisos de vecino' },
+  { id: 'worker', label: 'Permisos de trabajador' },
+  { id: 'president', label: 'Permisos de presidente' },
+  { id: 'admin', label: 'Permisos de admin' },
 ];
 
 interface AdminControlPanelProps {
@@ -24,9 +31,12 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
     neighborServices,
     addBuilding,
     updateBuilding,
-    addUser,
     updateUser,
     updateUserRole,
+    customRoles,
+    addCustomRole,
+    renameCustomRole,
+    deleteCustomRole,
     addNeighborService,
     updateNeighborService,
     showToast,
@@ -37,7 +47,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
   const [quotaPrices, setQuotaPrices] = useState<Record<string, string>>({});
   const [feePrices, setFeePrices] = useState<Record<string, string>>({});
   const [newService, setNewService] = useState({ name: '', price: '' });
-  const [newPerson, setNewPerson] = useState({ name: '', email: '', role: 'neighbor' as Role, buildingId: '' });
+  const [newRole, setNewRole] = useState({ name: '', baseRole: 'neighbor' as CustomRole['baseRole'] });
   const [newBuilding, setNewBuilding] = useState({
     name: '',
     address: '',
@@ -112,29 +122,43 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
     setNewService({ name: '', price: '' });
   };
 
-  const addPerson = (e: React.FormEvent) => {
+  const createRole = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPerson.name.trim() || !newPerson.email.trim()) {
-      showToast('Faltan datos', 'Indica nombre y correo.', 'alert');
+    addCustomRole(newRole.name, newRole.baseRole);
+    setNewRole({ name: '', baseRole: newRole.baseRole });
+  };
+
+  const assignedKey = (email: string, role: Role) => {
+    const custom = customRoles.find((r) => r.memberEmails.includes(email.trim().toLowerCase()));
+    return custom ? `c:${custom.id}` : `s:${role}`;
+  };
+
+  const applyRole = (userId: string, value: string, currentBuildingId?: string, currentSpecialty?: string, monthlyFee?: number, unitOrArea?: string, floor?: string) => {
+    const extraBase = {
+      monthlyFee,
+      unitOrArea,
+      floor,
+      specialty: currentSpecialty,
+    };
+    if (value.startsWith('c:')) {
+      const def = customRoles.find((r) => r.id === value.slice(2));
+      if (!def) return;
+      const b = buildings.find((x) => x.id === (currentBuildingId || buildings[0]?.id));
+      updateUserRole(userId, def.baseRole, {
+        ...extraBase,
+        customRoleId: def.id,
+        buildingId: def.baseRole === 'neighbor' || def.baseRole === 'president' ? b?.id : undefined,
+        buildingName: def.baseRole === 'neighbor' || def.baseRole === 'president' ? b?.name : undefined,
+      });
       return;
     }
-    const community = buildings.find((b) => b.id === newPerson.buildingId);
-    const isBuildingRole = newPerson.role === 'neighbor' || newPerson.role === 'president';
-    addUser({
-      name: newPerson.name.trim(),
-      email: newPerson.email.trim().toLowerCase(),
-      role: newPerson.role,
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      phone: '',
-      buildingId: isBuildingRole ? community?.id : undefined,
-      buildingName: isBuildingRole ? community?.name : undefined,
-      monthlyFee: isBuildingRole ? (newPerson.role === 'president' ? 95 : 85) : undefined,
-      specialty: newPerson.role === 'worker' ? 'Mantenimiento General' : undefined,
-      provider: 'email',
-      status: 'active',
+    const role = value.slice(2) as Role;
+    const b = buildings.find((x) => x.id === (currentBuildingId || buildings[0]?.id));
+    updateUserRole(userId, role, {
+      ...extraBase,
+      buildingId: role === 'neighbor' || role === 'president' ? b?.id : undefined,
+      buildingName: role === 'neighbor' || role === 'president' ? b?.name : undefined,
     });
-    showToast('Persona añadida', `${newPerson.name.trim()} quedó como ${newPerson.role}.`, 'success');
-    setNewPerson({ name: '', email: '', role: 'neighbor', buildingId: '' });
   };
 
   const addFinca = (e: React.FormEvent) => {
@@ -202,7 +226,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
         </div>
         <div className="flex flex-wrap gap-1.5">
           {tabBtn('precios', 'Precios')}
-          {tabBtn('personas', 'Personas y roles')}
+          {tabBtn('personas', 'Roles')}
           {tabBtn('fincas', 'Fincas')}
         </div>
 
@@ -302,109 +326,120 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({ isOpen, on
         )}
 
         {tab === 'personas' && (
-          <div className="space-y-3">
-            <form onSubmit={addPerson} className="grid sm:grid-cols-5 gap-2">
+          <div className="space-y-4">
+            <form onSubmit={createRole} className="grid sm:grid-cols-[1fr_1fr_auto] gap-2">
               <input
-                value={newPerson.name}
-                onChange={(e) => setNewPerson((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Nombre"
-                className="px-2 py-1.5 border border-[#E2E8F0] rounded-lg text-xs"
-              />
-              <input
-                type="email"
-                value={newPerson.email}
-                onChange={(e) => setNewPerson((p) => ({ ...p, email: e.target.value }))}
-                placeholder="Correo"
+                value={newRole.name}
+                onChange={(e) => setNewRole((p) => ({ ...p, name: e.target.value }))}
+                placeholder="Nombre del nuevo rol"
                 className="px-2 py-1.5 border border-[#E2E8F0] rounded-lg text-xs"
               />
               <select
-                value={newPerson.role}
-                onChange={(e) => setNewPerson((p) => ({ ...p, role: e.target.value as Role }))}
+                value={newRole.baseRole}
+                onChange={(e) => setNewRole((p) => ({ ...p, baseRole: e.target.value as CustomRole['baseRole'] }))}
                 className="px-2 py-1.5 border border-[#E2E8F0] rounded-lg text-xs"
               >
-                {ROLE_OPTIONS.map((r) => (
+                {BASE_ROLE_OPTIONS.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.label}
                   </option>
                 ))}
               </select>
-              <select
-                value={newPerson.buildingId}
-                onChange={(e) => setNewPerson((p) => ({ ...p, buildingId: e.target.value }))}
-                className="px-2 py-1.5 border border-[#E2E8F0] rounded-lg text-xs"
-              >
-                <option value="">Finca (opcional)</option>
-                {buildings.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-              <button type="submit" className="px-2 py-1.5 bg-[#0A2E6D] text-white text-xs font-bold rounded-lg cursor-pointer">
-                Dar de alta
+              <button type="submit" className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0A2E6D] text-white text-xs font-bold rounded-lg cursor-pointer">
+                <Plus className="w-3.5 h-3.5" /> Crear rol
               </button>
             </form>
-            <div className="max-h-52 overflow-y-auto space-y-1.5">
-              {allUsers.map((u) => (
-                <div key={u.id} className="grid sm:grid-cols-4 gap-2 items-center text-xs bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-2 py-1.5">
-                  <input
-                    defaultValue={u.name}
-                    onBlur={(e) => {
-                      const name = e.target.value.trim();
-                      if (name && name !== u.name) updateUser(u.id, { name });
-                    }}
-                    className="px-2 py-1 border border-[#E2E8F0] rounded-lg bg-white"
-                  />
-                  <span className="truncate text-[#5A6B82]">{u.email}</span>
-                  <select
-                    value={u.role}
-                    onChange={(e) => {
-                      const role = e.target.value as Role;
-                      const b = buildings.find((x) => x.id === (u.buildingId || buildings[0]?.id));
-                      updateUserRole(u.id, role, {
-                        buildingId: role === 'neighbor' || role === 'president' ? b?.id : undefined,
-                        buildingName: role === 'neighbor' || role === 'president' ? b?.name : undefined,
-                        specialty: role === 'worker' ? u.specialty || 'Mantenimiento General' : undefined,
-                        monthlyFee: u.monthlyFee,
-                        unitOrArea: u.unitOrArea,
-                        floor: u.floor,
-                      });
-                    }}
-                    className="px-2 py-1 border border-[#E2E8F0] rounded-lg bg-white"
-                  >
-                    {ROLE_OPTIONS.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={u.buildingId || ''}
-                    onChange={(e) => {
-                      const b = buildings.find((x) => x.id === e.target.value);
-                      if (u.role === 'neighbor' || u.role === 'president') {
-                        updateUserRole(u.id, u.role, {
-                          buildingId: b?.id,
-                          buildingName: b?.name,
-                          monthlyFee: u.monthlyFee,
-                          unitOrArea: u.unitOrArea,
-                          floor: u.floor,
-                        });
-                      } else {
-                        showToast('Cambia el rol', 'Asigna vecino o presidente para ligar una finca.', 'info');
-                      }
-                    }}
-                    className="px-2 py-1 border border-[#E2E8F0] rounded-lg bg-white"
-                  >
-                    <option value="">Sin finca</option>
-                    {buildings.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+            <div>
+              <p className="text-[11px] font-bold text-[#0A2E6D] mb-1.5 flex items-center gap-1">
+                <Shield className="w-3.5 h-3.5" /> Roles del sistema y creados
+              </p>
+              <div className="max-h-40 overflow-y-auto space-y-1.5">
+                {SYSTEM_ROLES.map((r) => {
+                  const count = allUsers.filter((u) => assignedKey(u.email, u.role) === `s:${r.id}`).length;
+                  return (
+                    <div key={r.id} className="flex items-center gap-2 text-xs border border-[#E2E8F0] rounded-xl px-2 py-1.5 bg-[#F8FAFC]">
+                      <span className="flex-1 font-semibold text-[#16202E]">{r.label}</span>
+                      <span className="text-[#5A6B82]">{r.hint}</span>
+                      <span className="text-[10px] font-bold text-[#0A2E6D]">{count}</span>
+                    </div>
+                  );
+                })}
+                {customRoles.map((r) => (
+                  <div key={r.id} className="flex items-center gap-2 text-xs border border-[#E2E8F0] rounded-xl px-2 py-1.5">
+                    <input
+                      defaultValue={r.name}
+                      onBlur={(e) => {
+                        const name = e.target.value.trim();
+                        if (name && name !== r.name) renameCustomRole(r.id, name);
+                      }}
+                      className="flex-1 px-2 py-1 border border-[#E2E8F0] rounded-lg bg-white"
+                    />
+                    <span className="text-[#5A6B82] hidden sm:inline">
+                      {BASE_ROLE_OPTIONS.find((b) => b.id === r.baseRole)?.label}
+                    </span>
+                    <span className="text-[10px] font-bold text-[#0A2E6D]">{r.memberEmails.length}</span>
+                    <button type="button" onClick={() => deleteCustomRole(r.id)} className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 cursor-pointer">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-[#0A2E6D] mb-1.5">Asignar rol a cada persona</p>
+              <div className="max-h-52 overflow-y-auto space-y-1.5">
+                {allUsers.map((u) => (
+                  <div key={u.id} className="grid sm:grid-cols-[1fr_1fr_1fr] gap-2 items-center text-xs bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-2 py-1.5">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate text-[#16202E]">{u.name}</p>
+                      <p className="truncate text-[#5A6B82]">{u.email}</p>
+                    </div>
+                    <select
+                      value={assignedKey(u.email, u.role)}
+                      onChange={(e) => applyRole(u.id, e.target.value, u.buildingId, u.specialty, u.monthlyFee, u.unitOrArea, u.floor)}
+                      className="px-2 py-1 border border-[#E2E8F0] rounded-lg bg-white"
+                    >
+                      {SYSTEM_ROLES.map((r) => (
+                        <option key={r.id} value={`s:${r.id}`}>
+                          {r.label}
+                        </option>
+                      ))}
+                      {customRoles.map((r) => (
+                        <option key={r.id} value={`c:${r.id}`}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={u.buildingId || ''}
+                      onChange={(e) => {
+                        const b = buildings.find((x) => x.id === e.target.value);
+                        if (u.role === 'neighbor' || u.role === 'president') {
+                          const custom = customRoles.find((r) => r.memberEmails.includes(u.email.trim().toLowerCase()));
+                          updateUserRole(u.id, u.role, {
+                            buildingId: b?.id,
+                            buildingName: b?.name,
+                            monthlyFee: u.monthlyFee,
+                            unitOrArea: u.unitOrArea,
+                            floor: u.floor,
+                            customRoleId: custom?.id,
+                          });
+                        } else {
+                          showToast('Cambia el rol', 'Asigna vecino o presidente para ligar una finca.', 'info');
+                        }
+                      }}
+                      className="px-2 py-1 border border-[#E2E8F0] rounded-lg bg-white"
+                    >
+                      <option value="">Sin finca</option>
+                      {buildings.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

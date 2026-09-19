@@ -1,5 +1,12 @@
 export type Role = 'admin' | 'president' | 'worker' | 'neighbor' | 'unassigned';
 
+export interface CustomRole {
+  id: string;
+  name: string;
+  baseRole: Exclude<Role, 'unassigned'>;
+  memberEmails: string[];
+}
+
 export type TicketPriority = 'baja' | 'media' | 'alta' | 'urgente';
 export type TicketStatus = 'pendiente' | 'en_proceso' | 'resuelta' | 'rechazada';
 export type TicketCategory =
