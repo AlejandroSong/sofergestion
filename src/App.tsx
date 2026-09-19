@@ -17,6 +17,7 @@ import { ReportsModal } from './components/ReportsModal';
 import { SoferServicesModal } from './components/SoferServicesModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { AdminControlPanel } from './components/AdminControlPanel';
+import { ResidentAdBanner } from './components/ResidentAdBanner';
 import { canOpenBuilding, canOpenReports, canManageBuildings, canPostAccounting, canManageSoferCatalog, canCreateTicket, canManageUsers } from './utils/permissions';
 
 const MainAppContent: React.FC = () => {
@@ -93,7 +94,11 @@ const MainAppContent: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#FFFFFF] text-[#16202E] flex flex-col font-sans selection:bg-[#0A2E6D] selection:text-black">
+    <div
+      className={`min-h-screen bg-[#FFFFFF] text-[#16202E] flex flex-col font-sans selection:bg-[#0A2E6D] selection:text-black ${
+        currentUser.role === 'neighbor' || currentUser.role === 'president' ? 'pb-20 sm:pb-24' : ''
+      }`}
+    >
       {/* Top Navigation Bar */}
       <Navbar
         onOpenCreateTicket={() => {
@@ -212,6 +217,8 @@ const MainAppContent: React.FC = () => {
         isOpen={isControlOpen && currentUser.role === 'admin'}
         onClose={() => setIsControlOpen(false)}
       />
+
+      {(currentUser.role === 'neighbor' || currentUser.role === 'president') && <ResidentAdBanner />}
 
       {/* Footer */}
       <footer className="border-t border-[#E2E8F0] bg-[#F4F6FA] py-4 text-center text-xs text-[#5A6B82]">
