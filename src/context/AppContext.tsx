@@ -1038,11 +1038,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const pushSharedPayload = (key: SharedKey, payload: unknown[]) => {
-    if (!sharedReadyRef.current) return;
     const json = stableJson(payload);
     if (lastSharedJsonRef.current[key] === json) return;
     if (payload.length === 0 && lastSharedJsonRef.current[key] === undefined) return;
     lastSharedJsonRef.current[key] = json;
+    void saveShared(key, payload);
+  };
+
+  const flushSharedNow = (key: SharedKey, payload: unknown[]) => {
+    lastSharedJsonRef.current[key] = stableJson(payload);
     void saveShared(key, payload);
   };
 
@@ -1448,7 +1452,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       presidentId: buildingData.presidentId || '',
     };
 
-    setBuildings((prev) => [newBuilding, ...prev]);
+    setBuildings((prev) => {
+      const next = [newBuilding, ...prev];
+      buildingsRef.current = next;
+      flushSharedNow('buildings', next);
+      return next;
+    });
 
     // Aviso a todos los roles: la finca ya está en el listado compartido.
     const notif: PushNotification = {
@@ -1936,7 +1945,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ],
     };
 
-    setTickets((prev) => [newTicket, ...prev]);
+    setTickets((prev) => {
+      const next = [newTicket, ...prev];
+      ticketsRef.current = next;
+      flushSharedNow('tickets', next);
+      return next;
+    });
 
     // Real-time Push Notification
     const notifTitle = data.priority === 'urgente' ? '🚨 INCIDENCIA URGENTE' : '📋 Nueva incidencia';
@@ -2360,7 +2374,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'completado',
     };
 
-    setTransactions((prev) => [newTx, ...prev]);
+    setTransactions((prev) => {
+      const next = [newTx, ...prev];
+      transactionsRef.current = next;
+      flushSharedNow('transactions', next);
+      return next;
+    });
 
     // 3. Real-time Notification for Admin & President
     const notif: PushNotification = {
@@ -2506,7 +2525,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       referenceNumber: `CAJA-${Date.now().toString().slice(-4)}`,
       status: 'completado',
     };
-    setTransactions((prev) => [newTx, ...prev]);
+    setTransactions((prev) => {
+      const next = [newTx, ...prev];
+      transactionsRef.current = next;
+      flushSharedNow('transactions', next);
+      return next;
+    });
 
     // 4. Send Push Notification to Admin & President
     const notifTitle = isResolving ? '✅ Incidencia Resuelto y Caja Actualizada' : '🔧 Gasto de Reparación en Caja';
@@ -2567,7 +2591,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         referenceNumber: data.referenceNumber,
         status: 'completado',
       };
-      setTransactions((prev) => [newTx, ...prev]);
+      setTransactions((prev) => {
+      const next = [newTx, ...prev];
+      transactionsRef.current = next;
+      flushSharedNow('transactions', next);
+      return next;
+    });
     }
 
     // Push notification
@@ -2672,7 +2701,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'solicitado',
       createdAt: new Date().toISOString(),
     };
-    setNeighborRequests((prev) => [...prev, newRequest]);
+    setNeighborRequests((prev) => {
+      const next = [...prev, newRequest];
+      neighborRequestsRef.current = next;
+      flushSharedNow('neighbor_requests', next);
+      return next;
+    });
 
     const community = buildings.find((b) => b.id === requestedBuildingId);
     publishNotification({
@@ -2774,7 +2808,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       code,
     };
 
-    setTransactions((prev) => [newTx, ...prev]);
+    setTransactions((prev) => {
+      const next = [newTx, ...prev];
+      transactionsRef.current = next;
+      flushSharedNow('transactions', next);
+      return next;
+    });
 
     // Notification
     const notif: PushNotification = {

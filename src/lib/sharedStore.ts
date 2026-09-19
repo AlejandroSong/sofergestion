@@ -34,9 +34,12 @@ export async function fetchSharedMap(): Promise<Partial<Record<SharedKey, unknow
   return map;
 }
 
-export async function saveShared(key: SharedKey, payload: unknown[]) {
-  if (!supabase) return;
-  const { error } = await supabase.from('app_shared').upsert(
+export async function saveShared(key: SharedKey, payload: unknown[]): Promise<boolean> {
+  if (!supabase) return false;
+  const rpc = await supabase.rpc('upsert_app_shared', { p_key: key, p_payload: payload });
+  if (!rpc.error) return true;
+
+  const upsert = await supabase.from('app_shared').upsert(
     {
       key,
       payload,
@@ -44,9 +47,11 @@ export async function saveShared(key: SharedKey, payload: unknown[]) {
     },
     { onConflict: 'key' }
   );
-  if (error) {
-    console.warn('No se pudo sincronizar', key, error.message);
+  if (upsert.error) {
+    console.warn('No se pudo sincronizar', key, rpc.error.message || upsert.error.message);
+    return false;
   }
+  return true;
 }
 
 export function subscribeShared(

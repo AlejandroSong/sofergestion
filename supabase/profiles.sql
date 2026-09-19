@@ -248,6 +248,23 @@ alter table public.app_shared replica identity full;
 
 grant select, insert, update on public.app_shared to authenticated;
 
+create or replace function public.upsert_app_shared(p_key text, p_payload jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.app_shared (key, payload, updated_at)
+  values (p_key, coalesce(p_payload, '[]'::jsonb), now())
+  on conflict (key) do update
+    set payload = excluded.payload,
+        updated_at = now();
+end;
+$$;
+
+grant execute on function public.upsert_app_shared(text, jsonb) to authenticated, anon;
+
 do $$
 begin
   begin
