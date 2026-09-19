@@ -34,7 +34,7 @@ export function consumeGoogleRedirectResult(): { idToken?: string; error?: strin
 }
 
 export function startGoogleRedirect(clientId: string) {
-  window.location.assign(googleAuthUrl(clientId));
+  window.location.replace(googleAuthUrl(clientId));
 }
 
 export function requestGoogleIdToken(clientId: string): Promise<string> {
