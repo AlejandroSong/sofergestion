@@ -14,7 +14,13 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
 export const googleClientId = DEFAULT_GOOGLE_CLIENT_ID;
 
 export function googleRedirectUri(): string {
-  return `${window.location.origin}${GOOGLE_CALLBACK_PATH}`;
+  const origin = window.location.origin.replace(/\/$/, '');
+  return `${origin}${GOOGLE_CALLBACK_PATH}`;
+}
+
+export function isAndroidWebView(): boolean {
+  const ua = navigator.userAgent || '';
+  return /Android/i.test(ua) && /;\s*wv\)/i.test(ua);
 }
 
 export function redirectPreviewToProduction(): boolean {
