@@ -2,16 +2,22 @@
   "id": "/",
   "name": "SOFER Gestión",
   "short_name": "SOFER",
-  "description": "Administración de fincas, incidencias, contabilidad y servicios de mantenimiento.",
+  "description": "SOFER Gestión: administración de fincas, incidencias, contabilidad y servicios.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#0A2E6D",
   "theme_color": "#0A2E6D",
   "lang": "es",
   "dir": "ltr",
   "icons": [
+    {
+      "src": "/sofer-logo.jpg",
+      "sizes": "682x1024",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
