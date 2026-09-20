@@ -13,6 +13,10 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
         detectSessionInUrl: true,
         persistSession: true,
         autoRefreshToken: true,
+        storageKey: 'sofer-auth',
+      },
+      realtime: {
+        params: { eventsPerSecond: 10 },
       },
     })
   : null;

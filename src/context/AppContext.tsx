@@ -1250,37 +1250,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     localStorage.setItem('gest_v2_buildings', JSON.stringify(buildings));
-    if (!sharedReadyRef.current && buildings.length === 0) return;
+    if (!sharedReadyRef.current) return;
     pushSharedPayload('buildings', buildings);
   }, [buildings]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_tickets', JSON.stringify(tickets));
+    if (!sharedReadyRef.current) return;
     pushSharedPayload('tickets', tickets);
   }, [tickets]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_transactions', JSON.stringify(transactions));
+    if (!sharedReadyRef.current) return;
     pushSharedPayload('transactions', transactions);
   }, [transactions]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_worker_payouts', JSON.stringify(workerPayouts));
+    if (!sharedReadyRef.current) return;
     pushSharedPayload('worker_payouts', workerPayouts);
   }, [workerPayouts]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_neighbor_services', JSON.stringify(neighborServices));
+    if (!sharedReadyRef.current) return;
     pushSharedPayload('neighbor_services', neighborServices);
   }, [neighborServices]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_neighbor_requests', JSON.stringify(neighborRequests));
+    if (!sharedReadyRef.current) return;
     pushSharedPayload('neighbor_requests', neighborRequests);
   }, [neighborRequests]);
 
   useEffect(() => {
     localStorage.setItem('gest_v2_custom_roles', JSON.stringify(customRoles));
+    if (!sharedReadyRef.current) return;
     pushSharedPayload('custom_roles', customRoles);
   }, [customRoles]);
 
@@ -1288,6 +1294,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const directory = toRoleDirectory(users);
     roleDirectoryRef.current = directory;
     localStorage.setItem('gest_v2_users', JSON.stringify(users));
+    if (!sharedReadyRef.current) return;
     pushSharedPayload('role_directory', directory);
   }, [users]);
 
@@ -1647,7 +1654,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!isAuthenticated) return;
     syncLiveNow();
-    const id = window.setInterval(syncLiveNow, 4000);
+    const id = window.setInterval(syncLiveNow, 2000);
     return () => window.clearInterval(id);
   }, [isAuthenticated, currentUser.email, syncLiveNow]);
 

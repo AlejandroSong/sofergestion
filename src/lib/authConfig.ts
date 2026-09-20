@@ -1,6 +1,6 @@
 export const GOOGLE_CALLBACK_PATH = '/google-callback.html';
 
-export const PRODUCTION_ORIGIN = 'https://sofergestion.es';
+export const PRODUCTION_ORIGIN = 'https://www.sofergestion.es';
 export const PRODUCTION_HOST = 'sofergestion.es';
 export const PRODUCTION_WWW_HOST = 'www.sofergestion.es';
 export const PRODUCTION_VERCEL_HOST =
@@ -28,8 +28,13 @@ export function isAndroidWebView(): boolean {
 
 export function redirectPreviewToProduction(): boolean {
   const host = window.location.hostname;
+  if (host === PRODUCTION_HOST) {
+    window.location.replace(
+      `https://${PRODUCTION_WWW_HOST}${window.location.pathname}${window.location.search}${window.location.hash}`
+    );
+    return true;
+  }
   if (
-    host === PRODUCTION_HOST ||
     host === PRODUCTION_WWW_HOST ||
     host === PRODUCTION_VERCEL_HOST ||
     host === 'localhost' ||

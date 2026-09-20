@@ -3,13 +3,15 @@
   "appName": "SOFER Gestión",
   "webDir": "dist",
   "server": {
-    "url": "https://sofergestion.es",
+    "url": "https://www.sofergestion.es",
     "androidScheme": "https",
     "iosScheme": "https",
-    "hostname": "sofergestion.es",
+    "hostname": "www.sofergestion.es",
     "allowNavigation": [
       "sofergestion.es",
       "www.sofergestion.es",
+      "wqejnlkquytobynefgij.supabase.co",
+      "*.supabase.co",
       "accounts.google.com",
       "*.google.com",
       "*.google.es",
