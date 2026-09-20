@@ -1,5 +1,3 @@
-import { App } from '@capacitor/app';
-import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import {
   GOOGLE_CALLBACK_PATH,
@@ -59,6 +57,7 @@ function isGoogleReturnUrl(url: string): boolean {
     return false;
   }
 }
+
 function parseGoogleCallbackUrl(url: string): { idToken?: string; error?: string } {
   const parsed = new URL(url);
   const raw = parsed.hash ? parsed.hash.slice(1) : parsed.search.slice(1);
@@ -83,11 +82,26 @@ export function googleAuthUrl(clientId: string): string {
   return url.toString();
 }
 
+async function closeBrowser() {
+  try {
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.close();
+  } catch {
+    // Plugin ausente en este APK: el login sigue en el WebView.
+  }
+}
+
 export async function startGoogleRedirect(clientId: string) {
   const authUrl = googleAuthUrl(clientId);
   if (isNativeShell()) {
-    await Browser.open({ url: authUrl });
-    return;
+    try {
+      const { Browser } = await import('@capacitor/browser');
+      await Browser.open({ url: authUrl });
+      return;
+    } catch {
+      window.location.replace(authUrl);
+      return;
+    }
   }
   window.location.replace(authUrl);
 }
@@ -96,17 +110,24 @@ export function listenForGoogleRedirect(
   onToken: (idToken: string) => void,
   onError: (message: string) => void
 ) {
-  return App.addListener('appUrlOpen', ({ url }) => {
-    if (!url || !isGoogleReturnUrl(url)) return;
-    void Browser.close().catch(() => undefined);
-    try {
-      const { idToken, error } = parseGoogleCallbackUrl(url);
-      if (idToken) onToken(idToken);
-      else if (error) onError(error);
-    } catch {
-      onError('No se pudo procesar la respuesta de Google');
-    }
-  });
+  if (!isNativeShell()) {
+    return Promise.resolve({ remove: async () => undefined });
+  }
+  return import('@capacitor/app')
+    .then(({ App }) =>
+      App.addListener('appUrlOpen', ({ url }) => {
+        if (!url || !isGoogleReturnUrl(url)) return;
+        void closeBrowser();
+        try {
+          const { idToken, error } = parseGoogleCallbackUrl(url);
+          if (idToken) onToken(idToken);
+          else if (error) onError(error);
+        } catch {
+          onError('No se pudo procesar la respuesta de Google');
+        }
+      })
+    )
+    .catch(() => ({ remove: async () => undefined }));
 }
 
 export async function requestGoogleIdToken(clientId: string): Promise<string> {
