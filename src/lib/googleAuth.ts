@@ -1,10 +1,19 @@
+import { App } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
-import { googleClientId, googleRedirectUri, isAndroidWebView } from './authConfig';
+import {
+  GOOGLE_CALLBACK_PATH,
+  PRODUCTION_ORIGIN,
+  googleClientId,
+  googleRedirectUri,
+  isAndroidWebView,
+} from './authConfig';
 
 export { googleClientId, isAndroidWebView };
 
 const TOKEN_KEY = 'sofer-google-id-token';
 const ERROR_KEY = 'sofer-google-id-error';
+const APP_CALLBACK = 'es.sofergestion.app://google-callback';
 
 export function isNativeShell(): boolean {
   try {
@@ -37,19 +46,54 @@ export function consumeGoogleRedirectResult(): { idToken?: string; error?: strin
   }
 }
 
+function parseGoogleCallbackUrl(url: string): { idToken?: string; error?: string } {
+  const parsed = new URL(url);
+  const raw = parsed.hash ? parsed.hash.slice(1) : parsed.search.slice(1);
+  const params = new URLSearchParams(raw);
+  return {
+    idToken: params.get('id_token') || undefined,
+    error: params.get('error_description') || params.get('error') || undefined,
+  };
+}
+
 export function googleAuthUrl(clientId: string): string {
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('response_type', 'id_token');
   url.searchParams.set('scope', 'openid email profile');
-  url.searchParams.set('redirect_uri', googleRedirectUri());
+  const redirect = isNativeShell()
+    ? `${PRODUCTION_ORIGIN}${GOOGLE_CALLBACK_PATH}`
+    : googleRedirectUri();
+  url.searchParams.set('redirect_uri', redirect);
   url.searchParams.set('nonce', crypto.randomUUID());
   url.searchParams.set('prompt', 'select_account');
   return url.toString();
 }
 
-export function startGoogleRedirect(clientId: string) {
-  window.location.replace(googleAuthUrl(clientId));
+export async function startGoogleRedirect(clientId: string) {
+  const authUrl = googleAuthUrl(clientId);
+  if (isNativeShell()) {
+    await Browser.open({ url: authUrl });
+    return;
+  }
+  window.location.replace(authUrl);
+}
+
+export function listenForGoogleRedirect(
+  onToken: (idToken: string) => void,
+  onError: (message: string) => void
+) {
+  return App.addListener('appUrlOpen', ({ url }) => {
+    if (!url || !url.startsWith(APP_CALLBACK)) return;
+    void Browser.close().catch(() => undefined);
+    try {
+      const { idToken, error } = parseGoogleCallbackUrl(url);
+      if (idToken) onToken(idToken);
+      else if (error) onError(error);
+    } catch {
+      onError('No se pudo procesar la respuesta de Google');
+    }
+  });
 }
 
 export async function requestGoogleIdToken(clientId: string): Promise<string> {
@@ -57,7 +101,7 @@ export async function requestGoogleIdToken(clientId: string): Promise<string> {
     throw new Error('Falta el Client ID de Google');
   }
   if (isInAppShell()) {
-    startGoogleRedirect(clientId);
+    await startGoogleRedirect(clientId);
     return new Promise(() => undefined);
   }
 

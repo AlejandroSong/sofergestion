@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { useApp } from '../context/AppContext';
-import { consumeGoogleRedirectResult, googleClientId, startGoogleRedirect } from '../lib/googleAuth';
+import { consumeGoogleRedirectResult, googleClientId, listenForGoogleRedirect, startGoogleRedirect } from '../lib/googleAuth';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthScreen: React.FC = () => {
@@ -14,15 +14,35 @@ export const AuthScreen: React.FC = () => {
     const pending = consumeGoogleRedirectResult();
     if (pending.error) {
       setErrorMessage(pending.error);
-      return;
-    }
-    if (pending.idToken) {
+    } else if (pending.idToken) {
       setIsBusy(true);
       void signInWithGoogleCredential(pending.idToken).then((res) => {
         setIsBusy(false);
         if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
       });
     }
+
+    let handle: { remove: () => Promise<void> } | undefined;
+    void listenForGoogleRedirect(
+      (idToken) => {
+        setErrorMessage(null);
+        setIsBusy(true);
+        void signInWithGoogleCredential(idToken).then((res) => {
+          setIsBusy(false);
+          if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
+        });
+      },
+      (message) => {
+        setIsBusy(false);
+        setErrorMessage(message);
+      }
+    ).then((listener) => {
+      handle = listener;
+    }).catch(() => undefined);
+
+    return () => {
+      void handle?.remove();
+    };
   }, [signInWithGoogleCredential]);
 
   return (
@@ -75,7 +95,10 @@ export const AuthScreen: React.FC = () => {
               onClick={() => {
                 setErrorMessage(null);
                 setIsBusy(true);
-                startGoogleRedirect(googleClientId);
+                void startGoogleRedirect(googleClientId).catch((err) => {
+                  setIsBusy(false);
+                  setErrorMessage(err instanceof Error ? err.message : 'No se pudo abrir Google');
+                });
               }}
               className="w-full max-w-[336px] py-2.5 px-4 rounded-full border border-[#D5E4F5] bg-white text-sm font-semibold text-[#1E3A5F] cursor-pointer disabled:opacity-50"
             >

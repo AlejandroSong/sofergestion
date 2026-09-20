@@ -27,7 +27,16 @@
           window.close();
           return;
         }
-        window.location.replace(window.location.origin + '/');
+        var appCallback = 'es.sofergestion.app://google-callback';
+        var fragment = window.location.hash;
+        if (!fragment && (idToken || error)) {
+          fragment = '#' + (idToken ? 'id_token=' + encodeURIComponent(idToken) : 'error=' + encodeURIComponent(error));
+        }
+        window.location.replace(appCallback + fragment);
+        setTimeout(function () {
+          window.location.replace(window.location.origin + '/');
+        }, 400);
+
       })();
     </script>
   </body>
