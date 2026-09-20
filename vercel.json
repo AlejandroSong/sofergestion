@@ -27,6 +27,13 @@
       ]
     },
     {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "Content-Type", "value": "application/json" }
+      ]
+    },
+    {
       "source": "/google-callback.html",
       "headers": [{ "key": "Cache-Control", "value": "no-store" }]
     }
