@@ -27,6 +27,14 @@
           window.close();
           return;
         }
+        var cap = window.Capacitor;
+        var inNative =
+          (cap && ((cap.isNativePlatform && cap.isNativePlatform()) || (cap.getPlatform && cap.getPlatform() !== 'web'))) ||
+          (/Android/i.test(navigator.userAgent) && /;\s*wv\)/i.test(navigator.userAgent));
+        if (inNative) {
+          window.location.replace(window.location.origin + '/');
+          return;
+        }
         var appCallback = 'es.sofergestion.app://google-callback';
         var fragment = window.location.hash;
         if (!fragment && (idToken || error)) {

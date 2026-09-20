@@ -92,18 +92,9 @@ async function closeBrowser() {
 }
 
 export async function startGoogleRedirect(clientId: string) {
-  const authUrl = googleAuthUrl(clientId);
-  if (isNativeShell()) {
-    try {
-      const { Browser } = await import('@capacitor/browser');
-      await Browser.open({ url: authUrl });
-      return;
-    } catch {
-      window.location.replace(authUrl);
-      return;
-    }
-  }
-  window.location.replace(authUrl);
+  // En Android, Browser/Custom Tabs parte el flujo de Google (consent?part= → 400).
+  // El OAuth debe quedarse en el mismo WebView (origin sofergestion.es).
+  window.location.replace(googleAuthUrl(clientId));
 }
 
 export function listenForGoogleRedirect(

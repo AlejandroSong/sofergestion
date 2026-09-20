@@ -45,7 +45,15 @@ public class MainActivity extends BridgeActivity {
         webView.setWebViewClient(new BridgeWebViewClient(this.bridge) {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if (isGoogleAuthUrl(request.getUrl())) {
+                Uri uri = request.getUrl();
+                if (uri == null) {
+                    return super.shouldOverrideUrlLoading(view, request);
+                }
+                String scheme = uri.getScheme() != null ? uri.getScheme() : "";
+                if (scheme.equals("intent") || scheme.equals("market") || scheme.equals("android-app")) {
+                    return true;
+                }
+                if (isGoogleAuthUrl(uri)) {
                     return false;
                 }
                 return super.shouldOverrideUrlLoading(view, request);
