@@ -46,6 +46,19 @@ export function consumeGoogleRedirectResult(): { idToken?: string; error?: strin
   }
 }
 
+function isGoogleReturnUrl(url: string): boolean {
+  if (url.startsWith(APP_CALLBACK)) return true;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === 'https:' &&
+      (parsed.hostname === 'sofergestion.es' || parsed.hostname === 'www.sofergestion.es') &&
+      parsed.pathname.startsWith('/google-callback')
+    );
+  } catch {
+    return false;
+  }
+}
 function parseGoogleCallbackUrl(url: string): { idToken?: string; error?: string } {
   const parsed = new URL(url);
   const raw = parsed.hash ? parsed.hash.slice(1) : parsed.search.slice(1);
@@ -84,7 +97,7 @@ export function listenForGoogleRedirect(
   onError: (message: string) => void
 ) {
   return App.addListener('appUrlOpen', ({ url }) => {
-    if (!url || !url.startsWith(APP_CALLBACK)) return;
+    if (!url || !isGoogleReturnUrl(url)) return;
     void Browser.close().catch(() => undefined);
     try {
       const { idToken, error } = parseGoogleCallbackUrl(url);

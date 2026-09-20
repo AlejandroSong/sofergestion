@@ -29,6 +29,13 @@
                 <data android:scheme="es.sofergestion.app" android:host="google-callback" />
             </intent-filter>
 
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="sofergestion.es" android:pathPrefix="/google-callback.html" />
+            </intent-filter>
+
         </activity>
 
         <provider
