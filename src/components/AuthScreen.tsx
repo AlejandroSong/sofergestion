@@ -14,34 +14,30 @@ export const AuthScreen: React.FC = () => {
     const pending = consumeGoogleRedirectResult();
     if (pending.error) {
       setErrorMessage(pending.error);
-    } else if (pending.idToken) {
+      return;
+    }
+    if (pending.idToken) {
       setIsBusy(true);
       void signInWithGoogleCredential(pending.idToken).then((res) => {
         setIsBusy(false);
         if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
       });
     }
+  }, [signInWithGoogleCredential]);
 
-    let handle: { remove: () => Promise<void> } | undefined;
-    void listenForGoogleRedirect(
+  useEffect(() => {
+    const handle = listenForGoogleRedirect(
       (idToken) => {
-        setErrorMessage(null);
         setIsBusy(true);
         void signInWithGoogleCredential(idToken).then((res) => {
           setIsBusy(false);
           if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
         });
       },
-      (message) => {
-        setIsBusy(false);
-        setErrorMessage(message);
-      }
-    ).then((listener) => {
-      handle = listener;
-    }).catch(() => undefined);
-
+      (message) => setErrorMessage(message)
+    );
     return () => {
-      void handle?.remove();
+      void handle.then((l) => l.remove());
     };
   }, [signInWithGoogleCredential]);
 
