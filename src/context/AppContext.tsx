@@ -14,10 +14,11 @@ import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, is
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
 import { fetchSharedMap, saveShared, subscribeShared, stableJson, SHARED_KEYS, type SharedKey } from '../lib/sharedStore';
-import { applyRoleDirectory, clearRevocation, ensureSelfAdmin, fetchProfiles, isEmailRevoked, mergeUsersByEmail, persistProfile, revokeAccess, toRoleDirectory, upsertProfile, type RoleDirectoryEntry } from '../lib/profiles';
+import { applyRoleDirectory, clearRevocation, ensureSelfAdmin, fetchProfiles, isEmailRevoked, mergeRoleDirectories, mergeUsersByEmail, persistProfile, revokeAccess, toRoleDirectory, upsertProfile, type RoleDirectoryEntry } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
 import { parseHousing } from '../utils/housing';
+import { roleLabel } from '../utils/safe';
 import {
   isNotificationForUser,
   loadReadNotificationIds,
@@ -118,6 +119,8 @@ interface AppContextType {
   logout: () => void;
 
   buildings: Building[];
+  /** Catálogo completo (sin filtrar por rol). Para asignar vivienda o rol. */
+  allBuildings: Building[];
   addBuilding: (buildingData: Omit<Building, 'id' | 'createdAt'>) => Building;
   updateBuilding: (id: string, buildingData: Partial<Building>) => void;
   deleteBuilding: (id: string) => void;
@@ -294,8 +297,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const usersRef = useRef(users);
   usersRef.current = users;
   const roleDirectoryRef = useRef<RoleDirectoryEntry[]>([]);
+  const pendingRoleWritesRef = useRef<Map<string, RoleDirectoryEntry & { at: number }>>(new Map());
+
+  const applyPendingRoleWrites = (list: User[]): User[] => {
+    const now = Date.now();
+    return list.map((user) => {
+      const email = user.email.trim().toLowerCase();
+      const pending = pendingRoleWritesRef.current.get(email);
+      if (!pending) return user;
+      if (now - pending.at > 90_000) {
+        pendingRoleWritesRef.current.delete(email);
+        return user;
+      }
+      if (user.role === pending.role) {
+        pendingRoleWritesRef.current.delete(email);
+        return user;
+      }
+      return {
+        ...user,
+        role: pending.role,
+        name: pending.name || user.name,
+        buildingId: pending.buildingId ?? user.buildingId,
+        buildingName: pending.buildingName ?? user.buildingName,
+        specialty: pending.specialty ?? user.specialty,
+        unitOrArea: pending.unitOrArea ?? user.unitOrArea,
+        floor: pending.floor ?? user.floor,
+        status: pending.status ?? user.status,
+      };
+    });
+  };
+
   const withDirectory = (list: User[]) =>
-    withSingleAdmin(applyRoleDirectory(list, roleDirectoryRef.current));
+    withSingleAdmin(applyPendingRoleWrites(applyRoleDirectory(list, roleDirectoryRef.current)));
 
   // Drop leftover demo accounts without forcing David back as admin
   useEffect(() => {
@@ -442,7 +475,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo el administrador puede asignar o cambiar roles.');
       return;
     }
-    const targetUser = users.find((u) => u.id === id);
+    const targetUser =
+      users.find((u) => u.id === id) ||
+      users.find((u) => u.email.trim().toLowerCase() === id.trim().toLowerCase());
     const activeAdmins = users.filter((u) => u.role === 'admin' && u.status !== 'suspended');
 
     // Protect against having 0 active admins in the system
@@ -456,7 +491,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const newUsers = users.map((u) => {
-      if (u.id === id) {
+      const sameUser =
+        u.id === id ||
+        (targetUser && u.email.trim().toLowerCase() === targetUser.email.trim().toLowerCase());
+      if (sameUser) {
         const isBuildingRole = newRole === 'president' || newRole === 'neighbor';
         const updated: User = {
           ...u,
@@ -480,12 +518,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return u;
     });
 
+    usersRef.current = newUsers;
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
     roleDirectoryRef.current = toRoleDirectory(newUsers);
-    void saveShared('role_directory', roleDirectoryRef.current);
+    flushSharedNow('role_directory', roleDirectoryRef.current);
 
-    const persisted = newUsers.find((u) => u.id === id);
+    const persisted =
+      newUsers.find((u) => u.id === id) ||
+      newUsers.find(
+        (u) => targetUser && u.email.trim().toLowerCase() === targetUser.email.trim().toLowerCase()
+      );
+    if (persisted) {
+      pendingRoleWritesRef.current.set(persisted.email.trim().toLowerCase(), {
+        ...toRoleDirectory([persisted])[0],
+        at: Date.now(),
+      });
+    }
     const assignedEmail = (persisted || targetUser)?.email.trim().toLowerCase();
     if (assignedEmail) {
       setCustomRoles((prev) =>
@@ -534,17 +583,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('gest_v2_current_user', JSON.stringify(persisted));
     }
     if (persisted) {
+      showToast('Rol actualizado', `${persisted.name} ahora es ${roleLabel(persisted.role)}.`, 'success');
       void clearRevocation(persisted.email);
       void persistProfile(persisted).then((result) => {
         if (!result.ok) {
           showToast(
-            'Rol actualizado en el panel',
+            'Rol asignado en el panel',
             'La asignación ya vale para entrar. Si el perfil de Supabase no se guardó, ejecuta supabase/profiles.sql.',
             'info'
           );
           return;
         }
-        showToast('Rol Actualizado', `${persisted.name} ahora es ${persisted.role}.`, 'success');
+        pendingRoleWritesRef.current.delete(persisted.email.trim().toLowerCase());
         if (persisted.role === 'neighbor' || persisted.role === 'president') {
           publishNotification({
             id: crypto.randomUUID(),
@@ -1167,6 +1217,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const ingestRemoteMap = (remote: Partial<Record<SharedKey, unknown[]>>) => {
+    for (const key of SHARED_KEYS) {
+      const remotePayload = remote[key];
+      const local = localSharedFor(key);
+      if (key === 'role_directory') {
+        const remoteDir = Array.isArray(remotePayload) ? (remotePayload as RoleDirectoryEntry[]) : [];
+        const mergedDir = mergeRoleDirectories(local as RoleDirectoryEntry[], remoteDir);
+        if (mergedDir.length > 0) {
+          applySharedPayload(key, mergedDir);
+          const mergedJson = stableJson(mergedDir);
+          if (mergedJson !== stableJson(remoteDir)) {
+            lastSharedJsonRef.current[key] = mergedJson;
+            void saveShared(key, mergedDir);
+          }
+        }
+        continue;
+      }
+      if (Array.isArray(remotePayload) && remotePayload.length > 0) {
+        applySharedPayload(key, remotePayload);
+      } else if (local.length > 0) {
+        lastSharedJsonRef.current[key] = stableJson(local);
+        void saveShared(key, local);
+      }
+    }
+  };
+
   // Sync to localStorage
   useEffect(() => {
     localStorage.setItem('gest_v2_current_user', JSON.stringify(currentUser));
@@ -1174,6 +1250,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     localStorage.setItem('gest_v2_buildings', JSON.stringify(buildings));
+    if (!sharedReadyRef.current && buildings.length === 0) return;
     pushSharedPayload('buildings', buildings);
   }, [buildings]);
 
@@ -1489,23 +1566,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const hydrate = async () => {
       const remote = await fetchSharedMap();
       if (cancelled) return;
-      for (const key of SHARED_KEYS) {
-        const remotePayload = remote[key];
-        if (remotePayload) {
-          applySharedPayload(key, remotePayload);
-        } else {
-          const local = localSharedFor(key);
-          if (local.length > 0) {
-            lastSharedJsonRef.current[key] = stableJson(local);
-            void saveShared(key, local);
-          }
-        }
-      }
+      ingestRemoteMap(remote);
       sharedReadyRef.current = true;
     };
     void hydrate();
     const stop = subscribeShared((key, payload) => {
-      if (!cancelled) applySharedPayload(key, payload);
+      if (cancelled) return;
+      if (key === 'role_directory' && Array.isArray(payload)) {
+        applySharedPayload(
+          key,
+          mergeRoleDirectories(toRoleDirectory(usersRef.current), payload as RoleDirectoryEntry[])
+        );
+        return;
+      }
+      if (Array.isArray(payload) && payload.length === 0 && localSharedFor(key).length > 0) {
+        return;
+      }
+      applySharedPayload(key, payload);
     });
     return () => {
       cancelled = true;
@@ -1531,38 +1608,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
+  const syncLiveNow = useCallback(() => {
+    void refreshDirectory();
+    void fetchInbox().then((items) => {
+      if (!items.length) return;
+      const readIds = loadReadNotificationIds(currentUserRef.current.email);
+      setNotifications((prev) => mergeNotificationLists(prev, items, readIds));
+    });
+    void fetchSharedMap().then((remote) => {
+      ingestRemoteMap(remote);
+    });
+  }, [refreshDirectory]);
+
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void refreshDirectory();
+      if (document.visibilityState === 'visible') syncLiveNow();
     };
     document.addEventListener('visibilitychange', onVisible);
+    let removeResume: (() => void) | undefined;
+    void import('@capacitor/app')
+      .then(({ App }) =>
+        App.addListener('resume', () => {
+          syncLiveNow();
+        })
+      )
+      .then((handle) => {
+        removeResume = () => {
+          void handle.remove();
+        };
+      })
+      .catch(() => undefined);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
+      removeResume?.();
     };
-  }, []);
+  }, [syncLiveNow]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    const tick = () => {
-      if (currentUser.role === 'admin' || currentUser.role === 'unassigned') {
-        void refreshDirectory();
-      }
-      void fetchInbox().then((items) => {
-        if (!items.length) return;
-        const readIds = loadReadNotificationIds(currentUser.email);
-        setNotifications((prev) => mergeNotificationLists(prev, items, readIds));
-      });
-      void fetchSharedMap().then((remote) => {
-        SHARED_KEYS.forEach((key) => {
-          const payload = remote[key];
-          if (payload) applySharedPayload(key, payload);
-        });
-      });
-    };
-    tick();
-    const id = window.setInterval(tick, currentUser.role === 'unassigned' ? 4000 : 15000);
+    syncLiveNow();
+    const id = window.setInterval(syncLiveNow, 4000);
     return () => window.clearInterval(id);
-  }, [isAuthenticated, currentUser.role, currentUser.email, refreshDirectory]);
+  }, [isAuthenticated, currentUser.email, syncLiveNow]);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -3151,6 +3238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         registerUser,
         logout,
         buildings: accessibleBuildings,
+        allBuildings: buildings,
         addBuilding,
         updateBuilding,
         deleteBuilding,

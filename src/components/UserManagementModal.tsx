@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users,
@@ -49,7 +49,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     addUser,
     toggleUserStatus,
     revokeBuildingAssignment,
-    buildings,
+    allBuildings,
     refreshDirectory,
     restoreAccess,
     adminInboxTarget,
@@ -71,7 +71,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<Role>('neighbor');
-  const [newBuildingId, setNewBuildingId] = useState<string>(buildings[0]?.id || '');
+  const [newBuildingId, setNewBuildingId] = useState<string>(allBuildings[0]?.id || '');
   const [newUnitOrArea, setNewUnitOrArea] = useState<string>('');
   const [newTaxReturns, setNewTaxReturns] = useState<number>(0);
   const [newSpecialty, setNewSpecialty] = useState('Electricidad y Climatización');
@@ -115,7 +115,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
     let assignedBuildingName = undefined;
     if ((newRole === 'president' || newRole === 'neighbor') && newBuildingId) {
-      const b = buildings.find((b) => b.id === newBuildingId);
+      const b = allBuildings.find((b) => b.id === newBuildingId);
       assignedBuildingName = b?.name;
     }
 
@@ -169,7 +169,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     setEditingUserId(user.id);
     const initialRole = user.role === 'unassigned' ? 'neighbor' : user.role;
     setEditRole(initialRole);
-    setEditBuildingId(user.buildingId || buildings[0]?.id || '');
+    setEditBuildingId(user.buildingId || allBuildings[0]?.id || '');
     const housing = parseHousing(user.unitOrArea, user.floor);
     setEditFloor(housing.floor);
     setEditDoor(housing.door);
@@ -193,14 +193,23 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     }
   };
 
+  const inboxEditKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!isOpen || !adminInboxTarget?.userId) return;
+    if (!isOpen) {
+      inboxEditKeyRef.current = null;
+      return;
+    }
+    if (!adminInboxTarget?.userId) return;
+    const key = String(adminInboxTarget.userId);
+    if (inboxEditKeyRef.current === key) return;
     const target = allUsers.find(
       (u) =>
         u.id === adminInboxTarget.userId ||
         (u.email || '').trim().toLowerCase() === (adminInboxTarget.userId || '').trim().toLowerCase()
     );
     if (!target) return;
+    inboxEditKeyRef.current = key;
     setFilterRole(target.role === 'unassigned' ? 'unassigned' : 'all');
     setSearchQuery(target.email);
     startEditing(target);
@@ -209,7 +218,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const saveEditing = (userId: string) => {
     let assignedBuildingName = undefined;
     if ((editRole === 'president' || editRole === 'neighbor') && editBuildingId) {
-      const b = buildings.find((b) => b.id === editBuildingId);
+      const b = allBuildings.find((b) => b.id === editBuildingId);
       assignedBuildingName = b?.name;
     }
 
@@ -235,6 +244,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     });
 
     setEditingUserId(null);
+    if (filterRole !== 'all' && filterRole !== editRole) {
+      setFilterRole(editRole);
+    }
   };
 
   const filteredUsers = allUsers.filter((u) => {
@@ -606,7 +618,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                           onChange={(e) => setNewBuildingId(e.target.value)}
                           className="w-full px-3 py-1.5 bg-white border border-[#E2E8F0] rounded-lg text-xs text-[#16202E] outline-none"
                         >
-                          {buildings.map((b) => (
+                          {allBuildings.length === 0 && (
+                            <option value="">No hay fincas — créala en Fincas</option>
+                          )}
+                          {allBuildings.map((b) => (
                             <option key={b.id} value={b.id}>
                               {b.name} ({b.address})
                             </option>
@@ -962,8 +977,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                 onChange={(e) => {
                                   const r = e.target.value as Role;
                                   setEditRole(r);
-                                  if ((r === 'president' || r === 'neighbor') && !editBuildingId && buildings.length > 0) {
-                                    setEditBuildingId(buildings[0].id);
+                                  if ((r === 'president' || r === 'neighbor') && !editBuildingId && allBuildings.length > 0) {
+                                    setEditBuildingId(allBuildings[0].id);
                                   }
                                   if (r === 'worker' && !editSpecialty) {
                                     setEditSpecialty(standardSpecialties[0]);
@@ -992,7 +1007,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                   className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
                                 >
                                   <option value="">Selecciona edificio…</option>
-                                  {buildings.map((b) => (
+                                  {allBuildings.map((b) => (
                                     <option key={b.id} value={b.id}>
                                       {b.name} ({b.address})
                                     </option>
@@ -1035,12 +1050,17 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                                     className="w-full px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#16202E] outline-none"
                                   >
                                     <option value="">Selecciona edificio…</option>
-                                    {buildings.map((b) => (
+                                    {allBuildings.map((b) => (
                                       <option key={b.id} value={b.id}>
                                         {b.name}
                                       </option>
                                     ))}
                                   </select>
+                                  {allBuildings.length === 0 && (
+                                    <p className="mt-1 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                                      No hay fincas en el catálogo. Créala primero en la pestaña Fincas y vuelve a asignar el rol.
+                                    </p>
+                                  )}
                                 </div>
                                 <div>
                                   <label className="block text-[11px] font-semibold text-[#128480] mb-1">Piso</label>

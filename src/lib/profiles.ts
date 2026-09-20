@@ -256,8 +256,41 @@ export function toRoleDirectory(users: User[]): RoleDirectoryEntry[] {
   }));
 }
 
-function assignedRole(role?: User['role']) {
+export function assignedRole(role?: User['role']) {
   return role && role !== 'unassigned' ? role : undefined;
+}
+
+export function mergeRoleDirectories(
+  local: RoleDirectoryEntry[],
+  remote: RoleDirectoryEntry[]
+): RoleDirectoryEntry[] {
+  const map = new Map<string, RoleDirectoryEntry>();
+  const put = (row: RoleDirectoryEntry) => {
+    const email = (row.email || '').trim().toLowerCase();
+    if (!email) return;
+    const prev = map.get(email);
+    if (!prev) {
+      map.set(email, { ...row, email });
+      return;
+    }
+    const role = assignedRole(row.role) || assignedRole(prev.role) || row.role || prev.role;
+    map.set(email, {
+      ...prev,
+      ...row,
+      email,
+      role,
+      name: row.name || prev.name,
+      buildingId: row.buildingId ?? prev.buildingId,
+      buildingName: row.buildingName ?? prev.buildingName,
+      specialty: row.specialty ?? prev.specialty,
+      unitOrArea: row.unitOrArea ?? prev.unitOrArea,
+      floor: row.floor ?? prev.floor,
+      status: row.status ?? prev.status,
+    });
+  };
+  remote.forEach(put);
+  local.forEach(put);
+  return [...map.values()];
 }
 
 export function applyRoleDirectory(users: User[], directory: RoleDirectoryEntry[]): User[] {
@@ -271,7 +304,7 @@ export function applyRoleDirectory(users: User[], directory: RoleDirectoryEntry[
     if (!entry) return user;
     return {
       ...user,
-      role: entry.role,
+      role: assignedRole(entry.role) || assignedRole(user.role) || entry.role || user.role,
       name: entry.name || user.name,
       buildingId: entry.buildingId ?? user.buildingId,
       buildingName: entry.buildingName ?? user.buildingName,

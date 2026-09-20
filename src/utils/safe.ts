@@ -18,6 +18,19 @@ export function statusLabel(status: unknown): string {
   return asText(status).replace(/_/g, ' ') || 'pendiente';
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'administrador de fincas',
+  president: 'presidente de la comunidad',
+  worker: 'trabajador / operario',
+  neighbor: 'vecino / residente',
+  unassigned: 'usuario sin rol',
+};
+
+export function roleLabel(role: unknown): string {
+  const key = asText(role).trim().toLowerCase();
+  return ROLE_LABELS[key] || asText(role) || 'sin rol';
+}
+
 export function initials(name: unknown): string {
   const parts = asText(name).trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';

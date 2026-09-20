@@ -3,10 +3,13 @@ const config = {
   appName: 'SOFER Gestión',
   webDir: 'dist',
   server: {
+    url: 'https://sofergestion.es',
     androidScheme: 'https',
     iosScheme: 'https',
     hostname: 'sofergestion.es',
     allowNavigation: [
+      'sofergestion.es',
+      'www.sofergestion.es',
       'accounts.google.com',
       '*.google.com',
       '*.google.es',

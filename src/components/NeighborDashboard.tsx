@@ -39,6 +39,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
   const { 
     currentUser, 
     buildings, 
+    allBuildings,
     tickets, 
     neighborServices, 
     neighborRequests,
@@ -67,7 +68,7 @@ export const NeighborDashboard: React.FC<NeighborDashboardProps> = ({ onOpenCrea
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
   };
-  const building = buildings.find(b => b.id === currentUser.buildingId);
+  const building = allBuildings.find(b => b.id === currentUser.buildingId) || buildings.find(b => b.id === currentUser.buildingId);
   const balance = money(currentUser.feeBalance);
   
   const myTickets = tickets.filter(t => 

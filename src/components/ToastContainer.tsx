@@ -40,12 +40,7 @@ export const ToastContainer: React.FC = () => {
             </div>
 
             <div className="flex-1 min-w-0 pr-2">
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-semibold text-[#16202E]">{toast.title}</h4>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-[#E8EFF9] text-[#0A2E6D] border border-[#E2E8F0]">
-                  En Vivo
-                </span>
-              </div>
+              <h4 className="text-sm font-semibold text-[#16202E]">{toast.title}</h4>
               <p className="text-xs text-[#5A6B82] mt-1 leading-relaxed line-clamp-3">
                 {toast.message}
               </p>

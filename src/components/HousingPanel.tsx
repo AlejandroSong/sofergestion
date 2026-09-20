@@ -56,7 +56,7 @@ export const HousingPanel: React.FC<{ title?: string }> = ({ title = 'Mi viviend
 
       {communityDirectory.length === 0 ? (
         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-          Todavía no hay edificios registrados. Cuando el administrador dé de alta una finca, podrás seleccionarla aquí.
+          Todavía no hay edificios registrados. El administrador debe dar de alta una finca en la pestaña Fincas; después aparecerá aquí para que elijas comunidad, piso y número.
         </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
