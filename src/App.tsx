@@ -116,6 +116,9 @@ const MainAppContent: React.FC = () => {
         onOpenControlPanel={() => {
           if (currentUser.role === 'admin') setIsControlOpen(true);
         }}
+        onOpenUsers={() => {
+          if (canManageUsers(currentUser)) setIsUsersOpen(true);
+        }}
       />
 
       {/* Main Content Area */}
@@ -136,6 +139,7 @@ const MainAppContent: React.FC = () => {
             onOpenReports={() => setIsReportsOpen(true)}
             onOpenSoferServices={() => setIsSoferOpen(true)}
             onOpenControlPanel={() => setIsControlOpen(true)}
+            onOpenUsers={() => setIsUsersOpen(true)}
           />
         ) : currentUser.role === 'worker' ? (
           <WorkerDashboard />

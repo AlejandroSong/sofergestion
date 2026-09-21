@@ -36,11 +36,11 @@ import { useApp } from '../context/AppContext';
 import { exportAccountingToExcel, exportBuildingsPortfolioToExcel, exportTicketsToExcel, formatCurrency } from '../utils/exportUtils';
 import { collectWorkerRoster, countResolvedJobs } from '../utils/workers';
 import { asText, initials, statusLabel } from '../utils/safe';
+import { scrollToSection } from '../utils/scroll';
 import { canDeleteFinishedTicket } from '../utils/permissions';
 import { Building, Ticket } from '../types';
 import { WorkerPayoutModal } from './WorkerPayoutModal';
 import { AdjustRepairFundModal } from './AdjustRepairFundModal';
-import { UserManagementModal } from './UserManagementModal';
 import { ExpirationAlerts } from './ExpirationAlerts';
 import { AddBuildingModal } from './AddBuildingModal';
 import { AssignPresidentModal } from './AssignPresidentModal';
@@ -51,6 +51,7 @@ interface AdminDashboardProps {
   onOpenReports: () => void;
   onOpenSoferServices?: () => void;
   onOpenControlPanel?: () => void;
+  onOpenUsers?: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -60,6 +61,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenReports,
   onOpenSoferServices,
   onOpenControlPanel,
+  onOpenUsers,
 }) => {
   const {
     currentUser,
@@ -87,15 +89,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [buildingSearch, setBuildingSearch] = useState('');
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
-  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [selectedBuildingToAdjust, setSelectedBuildingToAdjust] = useState<Building | null>(null);
   const [buildingToEdit, setBuildingToEdit] = useState<Building | null>(null);
   const [buildingToAssign, setBuildingToAssign] = useState<Building | null>(null);
 
   useEffect(() => {
-    if (activeTab === 'buildings') {
-      document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const map: Record<string, string> = {
+      buildings: 'buildings-section',
+      accounting: 'finance-block',
+      tickets: 'tickets-section',
+    };
+    if (activeTab === 'dashboard') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
     }
+    const id = map[activeTab];
+    if (id) scrollToSection(id);
   }, [activeTab]);
 
   // Incidents board filters
@@ -105,21 +114,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [ticketBuildingIds, setTicketBuildingIds] = useState<string[]>([]);
   const [selectedIncidentIds, setSelectedIncidentIds] = useState<string[]>([]);
   
-  React.useEffect(() => {
-    if (activeTab === 'buildings') {
-      document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth' });
-    } else if (activeTab === 'accounting') {
-      document.getElementById('accounting-section')?.scrollIntoView({ behavior: 'smooth' });
-    } else if (activeTab === 'tickets') {
-      document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' });
-    } else if (activeTab === 'servicios') {
-      document.getElementById('sofer-services-section')?.scrollIntoView({ behavior: 'smooth' });
-    } else if (activeTab === 'dashboard') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, [activeTab]);
-
-
   // Global Financial calculations
   const totalIngresos = transactions
     .filter((t) => t.type === 'ingreso')
@@ -339,7 +333,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
-              onClick={() => setIsUserManagementOpen(true)}
+              onClick={() => onOpenUsers?.()}
               className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-blue-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
             >
               <div className="p-3 bg-blue-50 text-blue-600 rounded-xl group-hover:scale-110 transition-transform">
@@ -786,12 +780,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {currentUser.role === 'admin' && (
-      <>
+      <div id="finance-block" className="space-y-6">
       {/* EXCLUSIVE ADMIN SECTION: WORKER DIRECTORY & PAYOUTS */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
         {/* Workers Directory (Left) */}
-        <div className="xl:col-span-1 bg-[#F4F6FA] rounded-2xl border border-[#E2E8F0] p-6 shadow-md space-y-4">
+        <div id="workers-section" className="xl:col-span-1 bg-[#F4F6FA] rounded-2xl border border-[#E2E8F0] p-6 shadow-md space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-bold text-[#16202E] flex items-center gap-2">
@@ -803,7 +797,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </p>
             </div>
             <button
-              onClick={() => setIsUserManagementOpen(true)}
+              onClick={() => onOpenUsers?.()}
               className="text-xs text-[#0A2E6D] hover:text-[#0A2E6D] font-semibold hover:underline cursor-pointer"
             >
               Gestionar
@@ -851,12 +845,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div id="payroll-section" className="xl:col-span-2 bg-[#F4F6FA] rounded-2xl border border-[#E2E8F0] p-6 shadow-md space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-purple-400 uppercase tracking-wider bg-purple-950/40 px-2 py-0.5 rounded border border-purple-800/40 mb-1">
+              <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-purple-800 uppercase tracking-wider bg-purple-100 px-2 py-0.5 rounded border border-purple-200 mb-1">
                 <ShieldCheck className="w-3 h-3" />
                 Gestión Exclusiva de Administrador
               </div>
               <h3 className="text-lg font-bold text-[#16202E] flex items-center gap-2">
-                <UserCheck className="w-5 h-5 text-purple-400" />
+                <UserCheck className="w-5 h-5 text-purple-700" />
                 Finanzas & Nómina de Pagos ({workerPayouts.length})
               </h3>
               <p className="text-xs text-[#5A6B82]">
@@ -866,7 +860,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <button
               onClick={() => setIsPayoutModalOpen(true)}
-              className="px-4 py-2 bg-[#0A2E6D] hover:bg-[#D4B370] text-[#0A0A0A] rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-xs shrink-0"
+              className="px-4 py-2 bg-[#0A2E6D] hover:bg-[#D4B370] text-white hover:text-[#0A0A0A] rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-xs shrink-0"
             >
               <Plus className="w-4 h-4" />
               Registrar Pago a Operario
@@ -957,8 +951,101 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-            </>
+      <div id="accounting-section" className="bg-[#F4F6FA] rounded-3xl border border-[#E2E8F0] p-6 shadow-md space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-green-700 uppercase tracking-wider bg-green-100 px-2.5 py-1 rounded-full border border-green-300 mb-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Gestión Financiera Exclusiva de Administrador
+              </div>
+              <h3 className="text-lg sm:text-xl font-bold text-[#16202E] flex items-center gap-2">
+                <Euro className="w-5 h-5 text-green-600" />
+                Libro Diario Contable Global ({ledger.length})
+              </h3>
+              <p className="text-xs text-[#5A6B82]">
+                Registro cronológico consolidado de ingresos, cuotas comunitarias y gastos operativos.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => exportAccountingToExcel(ledger, 'Libro Diario Consolidado', 'Historico')}
+                className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-[#16202E] border border-[#CBD5E1] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                Exportar Excel
+              </button>
+
+              <button
+                onClick={onOpenAddTransaction}
+                className="px-4 py-2.5 bg-[#0A2E6D] hover:bg-[#D4B370] text-white hover:text-[#0A0A0A] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo Asiento
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl bg-white">
+            <table className="w-full text-left text-xs text-[#16202E]">
+              <thead className="bg-slate-800 text-white text-xs uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 px-4 text-left">Código</th>
+                  <th className="py-3 px-4 text-left">Fecha</th>
+                  <th className="py-3 px-4 text-left">Edificio</th>
+                  <th className="py-3 px-4 text-left">Concepto / Descripción</th>
+                  <th className="py-3 px-4 text-left">Categoría</th>
+                  <th className="py-3 px-4 text-left">Método</th>
+                  <th className="py-3 px-4 text-right">Importe</th>
+                  <th className="py-3 px-4 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E2E8F0]">
+                {ledger.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-6 text-center text-[#5A6B82]">
+                      No hay movimientos contables registrados.
+                    </td>
+                  </tr>
+                ) : (
+                  ledger.map((tx) => (
+                    <tr key={tx.id} className="hover:bg-slate-50">
+                      <td className="py-2.5 px-3 font-mono font-semibold text-[#0A2E6D]">{tx.code}</td>
+                      <td className="py-2.5 px-3 font-mono text-[#5A6B82]">{tx.date}</td>
+                      <td className="py-2.5 px-3 font-medium">{tx.buildingName}</td>
+                      <td className="py-2.5 px-3">{tx.description}</td>
+                      <td className="py-2.5 px-3 capitalize text-[#5A6B82]">{statusLabel(tx.categoryOther || tx.category)}</td>
+                      <td className="py-2.5 px-3 capitalize text-[#5A6B82]">{tx.paymentMethod}</td>
+                      <td
+                        className={`py-2.5 px-3 text-right font-mono font-bold ${
+                          tx.type === 'ingreso' ? 'text-green-600' : 'text-red-600'
+                        }`}
+                      >
+                        {tx.type === 'ingreso' ? '+' : '-'}
+                        {formatCurrency(tx.amount)}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`¿Eliminar el asiento ${tx.code}?`)) deleteTransaction(tx.id);
+                          }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
+                          title="Eliminar asiento"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
       )}
+
 
       {/* Incidents & Maintenance Oversight Board */}
       <div id="tickets-section" className="bg-[#F4F6FA] rounded-3xl border border-[#E2E8F0] p-6 shadow-md space-y-6">
@@ -1435,102 +1522,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
       </div>
 
-      {/* Centralized Accounting Ledger Section (Admin Only) */}
-      {currentUser.role === 'admin' && (
-        <div id="accounting-section" className="bg-[#F4F6FA] rounded-3xl border border-[#E2E8F0] p-6 shadow-md space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-green-700 uppercase tracking-wider bg-green-100 px-2.5 py-1 rounded-full border border-green-300 mb-1">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Gestión Financiera Exclusiva de Administrador
-              </div>
-              <h3 className="text-lg sm:text-xl font-bold text-[#16202E] flex items-center gap-2">
-                <Euro className="w-5 h-5 text-green-600" />
-                Libro Diario Contable Global ({ledger.length})
-              </h3>
-              <p className="text-xs text-[#5A6B82]">
-                Registro cronológico consolidado de ingresos, cuotas comunitarias y gastos operativos.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => exportAccountingToExcel(ledger, 'Libro Diario Consolidado', 'Historico')}
-                className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-[#16202E] border border-[#CBD5E1] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-green-600" />
-                Exportar Excel
-              </button>
-
-              <button
-                onClick={onOpenAddTransaction}
-                className="px-4 py-2.5 bg-[#0A2E6D] hover:bg-[#D4B370] text-white hover:text-[#0A0A0A] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo Asiento
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl bg-white">
-            <table className="w-full text-left text-xs text-[#16202E]">
-              <thead className="bg-slate-800 text-white text-xs uppercase tracking-wider">
-                <tr>
-                  <th className="py-3 px-4 text-left">Código</th>
-                  <th className="py-3 px-4 text-left">Fecha</th>
-                  <th className="py-3 px-4 text-left">Edificio</th>
-                  <th className="py-3 px-4 text-left">Concepto / Descripción</th>
-                  <th className="py-3 px-4 text-left">Categoría</th>
-                  <th className="py-3 px-4 text-left">Método</th>
-                  <th className="py-3 px-4 text-right">Importe</th>
-                  <th className="py-3 px-4 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E2E8F0]">
-                {ledger.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-6 text-center text-[#5A6B82]">
-                      No hay movimientos contables registrados.
-                    </td>
-                  </tr>
-                ) : (
-                  ledger.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-mono font-semibold text-[#0A2E6D]">{tx.code}</td>
-                      <td className="py-2.5 px-3 font-mono text-[#5A6B82]">{tx.date}</td>
-                      <td className="py-2.5 px-3 font-medium">{tx.buildingName}</td>
-                      <td className="py-2.5 px-3">{tx.description}</td>
-                      <td className="py-2.5 px-3 capitalize text-[#5A6B82]">{statusLabel(tx.categoryOther || tx.category)}</td>
-                      <td className="py-2.5 px-3 capitalize text-[#5A6B82]">{tx.paymentMethod}</td>
-                      <td
-                        className={`py-2.5 px-3 text-right font-mono font-bold ${
-                          tx.type === 'ingreso' ? 'text-green-600' : 'text-red-600'
-                        }`}
-                      >
-                        {tx.type === 'ingreso' ? '+' : '-'}
-                        {formatCurrency(tx.amount)}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`¿Eliminar el asiento ${tx.code}?`)) deleteTransaction(tx.id);
-                          }}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
-                          title="Eliminar asiento"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
       {/* Worker Payout Modal */}
       <WorkerPayoutModal
         isOpen={isPayoutModalOpen}
@@ -1542,14 +1533,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         building={selectedBuildingToAdjust}
         isOpen={!!selectedBuildingToAdjust}
         onClose={() => setSelectedBuildingToAdjust(null)}
-      />
-
-      <UserManagementModal
-        isOpen={isUserManagementOpen}
-        onClose={() => {
-          setIsUserManagementOpen(false);
-          if (adminInboxTarget?.type === 'users') setAdminInboxTarget(null);
-        }}
       />
 
       <AddBuildingModal

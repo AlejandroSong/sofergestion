@@ -50,6 +50,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     toggleUserStatus,
     revokeBuildingAssignment,
     allBuildings,
+    customRoles,
     refreshDirectory,
     restoreAccess,
     adminInboxTarget,
@@ -272,7 +273,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const countNonDebtorNeighbors = allUsers.filter((u) => u.role === 'neighbor' && (u.feeBalance ?? 0) >= 0).length;
   const countAdmins = allUsers.filter((u) => u.role === 'admin').length;
   const countPresidents = allUsers.filter((u) => u.role === 'president').length;
-  const countWorkers = allUsers.filter((u) => u.role === 'worker').length;
+  const workerEmails = new Set(
+    customRoles
+      .filter((role) => role.baseRole === 'worker')
+      .flatMap((role) => role.memberEmails.map((email) => email.trim().toLowerCase()))
+  );
+  const countWorkers = allUsers.filter(
+    (u) => u.role === 'worker' || workerEmails.has((u.email || '').trim().toLowerCase())
+  ).length;
   const countUnassigned = allUsers.filter((u) => u.role === 'unassigned').length;
   const countSuspended = allUsers.filter((u) => u.status === 'suspended').length;
 
@@ -287,17 +295,17 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
             className="bg-[#F4F6FA] border border-[#E2E8F0] rounded-3xl max-w-4xl w-full text-[#16202E] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] relative"
           >
             {/* Header */}
-            <div className="p-6 border-b border-[#E2E8F0] flex items-center justify-between bg-[#191919] shrink-0">
+            <div className="p-6 border-b border-[#E2E8F0] flex items-center justify-between bg-white shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-[#0A2E6D]/10 border border-[#E2E8F0] flex items-center justify-center text-[#0A2E6D]">
                   <UserCog className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#0A2E6D] bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-800/40">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-white bg-[#0A2E6D] px-2 py-0.5 rounded">
                       Control de Acceso RBAC
                     </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-600 bg-yellow-950/30 px-2 py-0.5 rounded border border-yellow-800/30">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                       Asignación Exclusiva por Administrador
                     </span>
                   </div>

@@ -12,12 +12,14 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Role } from '../types';
-import { UserManagementModal } from './UserManagementModal';
 
-export const RoleSwitcher: React.FC = () => {
+interface RoleSwitcherProps {
+  onOpenUsers?: () => void;
+}
+
+export const RoleSwitcher: React.FC<RoleSwitcherProps> = ({ onOpenUsers }) => {
   const { currentUser, allUsers, logout } = useApp();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [isUserMgmtOpen, setIsUserMgmtOpen] = useState(false);
 
   const getRoleBadge = (role: Role) => {
     switch (role) {
@@ -167,7 +169,7 @@ export const RoleSwitcher: React.FC = () => {
                   <button
                     onClick={() => {
                       setDropdownOpen(false);
-                      setIsUserMgmtOpen(true);
+                      onOpenUsers?.();
                     }}
                     className="w-full text-left px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[#0A2E6D] text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer"
                   >
@@ -199,12 +201,6 @@ export const RoleSwitcher: React.FC = () => {
           </>
         )}
       </div>
-
-      {/* User Management Modal */}
-      <UserManagementModal
-        isOpen={isUserMgmtOpen}
-        onClose={() => setIsUserMgmtOpen(false)}
-      />
     </>
   );
 };

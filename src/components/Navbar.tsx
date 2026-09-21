@@ -13,7 +13,9 @@ import {
   Menu,
   X,
   LayoutDashboard,
+  UserCog,
 } from 'lucide-react';
+import { scrollToSection } from '../utils/scroll';
 import { useApp } from '../context/AppContext';
 import { RoleSwitcher } from './RoleSwitcher';
 import { NotificationDrawer } from './NotificationDrawer';
@@ -25,6 +27,7 @@ interface NavbarProps {
   onOpenAddBuilding: () => void;
   onOpenSoferServices?: () => void;
   onOpenControlPanel?: () => void;
+  onOpenUsers?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -32,6 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenReports,
   onOpenSoferServices,
   onOpenControlPanel,
+  onOpenUsers,
 }) => {
   const {
     currentUser,
@@ -47,11 +51,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const closeMenu = () => setMenuOpen(false);
 
-  const go = (tab: typeof activeTab, after?: () => void) => {
+  const go = (tab: typeof activeTab, sectionId?: string) => {
     setSelectedBuildingId(null);
     setActiveTab(tab);
     closeMenu();
-    if (after) window.setTimeout(after, 50);
+    if (sectionId) window.setTimeout(() => scrollToSection(sectionId), 80);
   };
 
   const itemClass = (active: boolean) =>
@@ -88,7 +92,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {(currentUser.role === 'admin' || currentUser.role === 'worker') && (
                 <button
                   type="button"
-                  onClick={() => go('buildings', () => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
+                  onClick={() => go('buildings', 'buildings-section')}
                   className={itemClass(activeTab === 'buildings')}
                 >
                   <Layers className="w-4 h-4" />
@@ -96,12 +100,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
               {currentUser.role === 'admin' && (
-                <button type="button" onClick={() => go('accounting')} className={itemClass(activeTab === 'accounting')}>
+                <button type="button" onClick={() => go('accounting', 'finance-block')} className={itemClass(activeTab === 'accounting')}>
                   <BarChart3 className="w-4 h-4" />
                   Contabilidad y nóminas
                 </button>
               )}
-              <button type="button" onClick={() => go('tickets')} className={itemClass(activeTab === 'tickets')}>
+              <button type="button" onClick={() => go('tickets', 'tickets-section')} className={itemClass(activeTab === 'tickets')}>
                 <Wrench className="w-4 h-4" />
                 {currentUser.role === 'worker'
                   ? 'Incidencias y tareas'
@@ -136,6 +140,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               {currentUser.role === 'admin' && (
                 <>
                   <p className="px-2 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#5A6B82]">Administración</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeMenu();
+                      onOpenUsers?.();
+                    }}
+                    className={itemClass(false)}
+                  >
+                    <UserCog className="w-4 h-4" />
+                    Control de acceso RBAC
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -222,7 +237,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 )}
               </button>
-              <RoleSwitcher />
+              <RoleSwitcher onOpenUsers={onOpenUsers} />
             </div>
           </div>
         </div>
