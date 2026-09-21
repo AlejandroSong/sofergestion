@@ -2,55 +2,133 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { Building, Ticket, Transaction, User } from '../types';
+import { asMoney, asText, roleLabel, statusLabel } from './safe';
 
 export function formatCurrency(amount: number | undefined | null, currency: string = '€'): string {
-  const numAmount = Number(amount) || 0;
+  const numAmount = asMoney(amount);
   return `${numAmount.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
-// ---------------- EXCEL EXPORTS ----------------
+function todayStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function safeFileName(name: string) {
+  const cleaned = asText(name)
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^\.+/, '')
+    .slice(0, 120);
+  return cleaned.endsWith('.xlsx') ? cleaned : `${cleaned || 'SOFER_export'}.xlsx`;
+}
+
+function safeSheetName(name: string) {
+  const cleaned = asText(name).replace(/[:\\/?*[\]]/g, ' ').trim();
+  return (cleaned || 'Hoja1').slice(0, 31);
+}
+
+function formatDay(value?: string) {
+  const raw = asText(value);
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw.slice(0, 10);
+  return date.toLocaleDateString('es-ES');
+}
+
+function sheetFromRows(headers: string[], rows: Array<Record<string, unknown>>) {
+  const body =
+    rows.length > 0
+      ? rows.map((row) => headers.map((header) => (row[header] === undefined || row[header] === null ? '' : row[header])))
+      : [headers.map(() => '')];
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
+  worksheet['!cols'] = headers.map((header) => {
+    const longest = Math.max(
+      header.length,
+      ...body.map((line) => asText(line[headers.indexOf(header)]).length)
+    );
+    return { wch: Math.min(42, Math.max(12, longest + 2)) };
+  });
+  return worksheet;
+}
+
+function downloadWorkbook(workbook: XLSX.WorkBook, fileName: string) {
+  const name = safeFileName(fileName);
+  const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([bytes], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
 
 export function exportAccountingToExcel(
   transactions: Transaction[],
   buildingName: string = 'Todos los Edificios',
   periodName: string = 'Historico'
 ) {
-  const data = transactions.map((t) => ({
-    'Código': t.code,
-    'Fecha': t.date,
-    'Edificio': t.buildingName,
-    'Tipo': t.type === 'ingreso' ? 'Ingreso (+)' : 'Gasto (-)',
-    'Categoría': t.category.replace(/_/g, ' ').toUpperCase(),
-    'Descripción': t.description,
-    'Importe (€)': t.amount,
-    'Método Pago': t.paymentMethod,
-    'Registrado Por': `${t.registeredBy} (${t.registeredByRole})`,
-    'Ticket Vinculado': t.ticketNumber || 'N/A',
-    'Estado': t.status,
+  const headers = [
+    'Código',
+    'Fecha',
+    'Edificio',
+    'Tipo',
+    'Categoría',
+    'Descripción',
+    'Importe (€)',
+    'Método de pago',
+    'Referencia',
+    'Registrado por',
+    'Ticket vinculado',
+    'Estado',
+  ];
+  const rows = (transactions || []).map((t) => ({
+    'Código': asText(t.code),
+    'Fecha': formatDay(t.date),
+    'Edificio': asText(t.buildingName),
+    'Tipo': t.type === 'ingreso' ? 'Ingreso' : 'Gasto',
+    'Categoría': statusLabel(t.categoryOther || t.category).toUpperCase(),
+    'Descripción': asText(t.description),
+    'Importe (€)': asMoney(t.amount),
+    'Método de pago': asText(t.paymentMethod),
+    'Referencia': asText(t.referenceNumber),
+    'Registrado por': `${asText(t.registeredBy)}${t.registeredByRole ? ` (${roleLabel(t.registeredByRole)})` : ''}`,
+    'Ticket vinculado': asText(t.ticketNumber) || '',
+    'Estado': statusLabel(t.status),
   }));
 
-  const worksheet = XLSX.utils.json_to_sheet(data);
+  const totalIngresos = (transactions || [])
+    .filter((t) => t.type === 'ingreso')
+    .reduce((acc, curr) => acc + asMoney(curr.amount), 0);
+  const totalGastos = (transactions || [])
+    .filter((t) => t.type === 'gasto')
+    .reduce((acc, curr) => acc + asMoney(curr.amount), 0);
+
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Contabilidad');
+  XLSX.utils.book_append_sheet(workbook, sheetFromRows(headers, rows), safeSheetName('Contabilidad'));
+  XLSX.utils.book_append_sheet(
+    workbook,
+    sheetFromRows(
+      ['Métrica', 'Valor'],
+      [
+        { Métrica: 'Edificio / alcance', Valor: buildingName },
+        { Métrica: 'Período', Valor: periodName },
+        { Métrica: 'Movimientos', Valor: rows.length },
+        { Métrica: 'Total ingresos (€)', Valor: totalIngresos },
+        { Métrica: 'Total gastos (€)', Valor: totalGastos },
+        { Métrica: 'Balance neto (€)', Valor: totalIngresos - totalGastos },
+      ]
+    ),
+    safeSheetName('Resumen')
+  );
 
-  // Summary sheet
-  const totalIngresos = transactions.filter((t) => t.type === 'ingreso').reduce((acc, curr) => acc + curr.amount, 0);
-  const totalGastos = transactions.filter((t) => t.type === 'gasto').reduce((acc, curr) => acc + curr.amount, 0);
-  const balance = totalIngresos - totalGastos;
-
-  const summaryData = [
-    { 'Métrica': 'Edificio / Alcance', 'Valor': buildingName },
-    { 'Métrica': 'Período', 'Valor': periodName },
-    { 'Métrica': 'Total Transacciones', 'Valor': transactions.length },
-    { 'Métrica': 'Total Ingresos (€)', 'Valor': totalIngresos },
-    { 'Métrica': 'Total Gastos (€)', 'Valor': totalGastos },
-    { 'Métrica': 'Balance Neto (€)', 'Valor': balance },
-  ];
-  const summarySheet = XLSX.utils.json_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen Financiero');
-
-  const fileName = `Incidencias_Financiero_${buildingName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-  XLSX.writeFile(workbook, fileName);
+  downloadWorkbook(workbook, `Contabilidad_${buildingName}_${todayStamp()}`);
 }
 
 export function exportBuildingsPortfolioToExcel(
@@ -58,59 +136,100 @@ export function exportBuildingsPortfolioToExcel(
   transactions: Transaction[],
   tickets: Ticket[]
 ) {
-  const data = buildings.map((b) => {
-    const tx = transactions.filter((t) => t.buildingId === b.id);
-    const income = tx.filter((t) => t.type === 'ingreso').reduce((a, c) => a + c.amount, 0);
-    const expense = tx.filter((t) => t.type === 'gasto').reduce((a, c) => a + c.amount, 0);
-    const openTickets = tickets.filter((t) => t.buildingId === b.id && t.status !== 'resuelta').length;
+  const rows = (buildings || []).map((b) => {
+    const tx = (transactions || []).filter((t) => t.buildingId === b.id);
+    const income = tx.filter((t) => t.type === 'ingreso').reduce((a, c) => a + asMoney(c.amount), 0);
+    const expense = tx.filter((t) => t.type === 'gasto').reduce((a, c) => a + asMoney(c.amount), 0);
+    const openTickets = (tickets || []).filter(
+      (t) => t.buildingId === b.id && t.status !== 'resuelta' && t.status !== 'rechazada'
+    ).length;
     return {
-      'Código': b.code,
-      'Edificio': b.name,
-      'Dirección': b.address,
-      'Ciudad': b.city,
-      'Unidades': b.totalUnits,
-      'Pisos': b.floors,
-      'Cuota mensual (€)': b.monthlyQuotaFee,
-      'Caja reparación (€)': b.repairFund || 0,
+      'Código': asText(b.code),
+      'Edificio': asText(b.name),
+      'Dirección': asText(b.address),
+      'Ciudad': asText(b.city),
+      'Unidades': asMoney(b.totalUnits),
+      'Pisos': asMoney(b.floors),
+      'Cuota mensual (€)': asMoney(b.monthlyQuotaFee),
+      'Caja reparación (€)': asMoney(b.repairFund),
       'Ingresos (€)': income,
       'Gastos (€)': expense,
       'Balance (€)': income - expense,
-      'Presidente': b.presidentName || 'Sin asignar',
+      'Presidente': asText(b.presidentName) || 'Sin asignar',
       'Incidencias abiertas': openTickets,
     };
   });
 
-  const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Edificios');
-  XLSX.writeFile(workbook, `Portafolio_Edificios_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.utils.book_append_sheet(
+    workbook,
+    sheetFromRows(
+      [
+        'Código',
+        'Edificio',
+        'Dirección',
+        'Ciudad',
+        'Unidades',
+        'Pisos',
+        'Cuota mensual (€)',
+        'Caja reparación (€)',
+        'Ingresos (€)',
+        'Gastos (€)',
+        'Balance (€)',
+        'Presidente',
+        'Incidencias abiertas',
+      ],
+      rows
+    ),
+    safeSheetName('Edificios')
+  );
+  downloadWorkbook(workbook, `Portafolio_Edificios_${todayStamp()}`);
 }
 
 export function exportTicketsToExcel(tickets: Ticket[], buildingName: string = 'General') {
-  const data = tickets.map((t) => ({
-    'N° Ticket': t.ticketNumber,
-    'Fecha Creación': new Date(t.createdAt).toLocaleDateString('es-ES'),
-    'Edificio': t.buildingName,
-    'Ubicación': `Piso ${t.floor} - ${t.unitOrArea}`,
-    'Categoría': t.category.toUpperCase(),
-    'Prioridad': t.priority.toUpperCase(),
-    'Estado': t.status.replace('_', ' ').toUpperCase(),
-    'Título': t.title,
-    'Descripción': t.description,
-    'Creado Por': `${t.createdBy.name} (${t.createdBy.role})`,
-    'Trabajador Asignado': t.assignedWorkerName || 'Sin asignar',
-    'Costo Mano Obra (€)': t.serviceCost || 0,
-    'Costo Materiales (€)': t.materialsCost || 0,
-    'Total Facturado (€)': t.totalCharged || 0,
-    'Fecha Resolución': t.resolvedAt ? new Date(t.resolvedAt).toLocaleDateString('es-ES') : 'En curso',
-  }));
+  const headers = [
+    'Nº ticket',
+    'Fecha creación',
+    'Edificio',
+    'Ubicación',
+    'Categoría',
+    'Prioridad',
+    'Estado',
+    'Título',
+    'Descripción',
+    'Creado por',
+    'Trabajador asignado',
+    'Costo mano de obra (€)',
+    'Costo materiales (€)',
+    'Total facturado (€)',
+    'Fecha resolución',
+  ];
+  const rows = (tickets || []).map((t) => {
+    const location = [t.floor ? `Piso ${t.floor}` : '', asText(t.unitOrArea)].filter(Boolean).join(' · ');
+    return {
+      'Nº ticket': asText(t.ticketNumber),
+      'Fecha creación': formatDay(t.createdAt),
+      'Edificio': asText(t.buildingName),
+      'Ubicación': location,
+      'Categoría': statusLabel(t.categoryOther || t.category).toUpperCase(),
+      'Prioridad': asText(t.priority).toUpperCase(),
+      'Estado': statusLabel(t.status).toUpperCase(),
+      'Título': asText(t.title),
+      'Descripción': asText(t.description),
+      'Creado por': t.createdBy?.name
+        ? `${t.createdBy.name} (${roleLabel(t.createdBy.role)})`
+        : '',
+      'Trabajador asignado': asText(t.assignedWorkerName) || 'Sin asignar',
+      'Costo mano de obra (€)': asMoney(t.serviceCost),
+      'Costo materiales (€)': asMoney(t.materialsCost),
+      'Total facturado (€)': asMoney(t.totalCharged),
+      'Fecha resolución': t.resolvedAt ? formatDay(t.resolvedAt) : 'En curso',
+    };
+  });
 
-  const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Incidencias');
-
-  const fileName = `Exportacion_Incidencias_${buildingName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-  XLSX.writeFile(workbook, fileName);
+  XLSX.utils.book_append_sheet(workbook, sheetFromRows(headers, rows), safeSheetName('Incidencias'));
+  downloadWorkbook(workbook, `Incidencias_${buildingName}_${todayStamp()}`);
 }
 
 // ---------------- PDF EXPORTS ----------------
