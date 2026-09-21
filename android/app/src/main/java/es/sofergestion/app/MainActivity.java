@@ -2,23 +2,22 @@ package es.sofergestion.app;
 
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends BridgeActivity {
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean guardsInstalled = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         installWebViewGuards();
-        handler.postDelayed(this::installWebViewGuards, 250);
-        handler.postDelayed(this::installWebViewGuards, 1200);
     }
 
     @Override
@@ -27,26 +26,33 @@ public class MainActivity extends BridgeActivity {
         installWebViewGuards();
     }
 
-    @Override
-    public void onResume() {
-        super.onResume();
-        installWebViewGuards();
-    }
-
     private void installWebViewGuards() {
         if (this.bridge == null || this.bridge.getWebView() == null) {
             return;
         }
         WebView webView = this.bridge.getWebView();
-        webView.getSettings().setSupportMultipleWindows(false);
-        webView.getSettings().setJavaScriptCanOpenWindowsAutomatically(false);
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        String ua = settings.getUserAgentString();
+        if (ua != null && ua.contains("; wv")) {
+            settings.setUserAgentString(ua.replace("; wv", ""));
+        }
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
+        if (guardsInstalled) {
+            return;
+        }
+        guardsInstalled = true;
         webView.setWebViewClient(new BridgeWebViewClient(this.bridge) {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return handleUrl(view, request.getUrl());
+                if (request != null && "POST".equalsIgnoreCase(request.getMethod())) {
+                    return false;
+                }
+                return handleUrl(view, request == null ? null : request.getUrl());
             }
 
             @Override
@@ -57,23 +63,57 @@ public class MainActivity extends BridgeActivity {
 
             private boolean handleUrl(WebView view, Uri uri) {
                 if (uri == null) {
-                    return true;
+                    return false;
                 }
                 String scheme = uri.getScheme() != null ? uri.getScheme().toLowerCase() : "";
+                if (scheme.isEmpty() || scheme.equals("about") || scheme.equals("data") || scheme.equals("blob")) {
+                    return false;
+                }
                 if (scheme.equals("intent")
                     || scheme.equals("market")
                     || scheme.equals("android-app")
                     || scheme.equals("googlechrome")
                     || scheme.equals("googlechromes")) {
-                    String fallback = uri.getQueryParameter("browser_fallback_url");
+                    String fallback = intentFallback(uri);
                     if (fallback != null && keepInside(Uri.parse(fallback))) {
                         view.loadUrl(fallback);
                     }
                     return true;
                 }
-                return !keepInside(uri);
+                if (scheme.equals("https") || scheme.equals("http")) {
+                    return !keepInside(uri);
+                }
+                return true;
             }
         });
+    }
+
+    private static String intentFallback(Uri uri) {
+        String fromQuery = uri.getQueryParameter("browser_fallback_url");
+        if (fromQuery != null && !fromQuery.isEmpty()) {
+            return fromQuery;
+        }
+        String raw = uri.toString();
+        String marker = "S.browser_fallback_url=";
+        int idx = raw.indexOf(marker);
+        if (idx >= 0) {
+            String rest = raw.substring(idx + marker.length());
+            int end = rest.indexOf(';');
+            if (end < 0) {
+                end = rest.length();
+            }
+            try {
+                return URLDecoder.decode(rest.substring(0, end), StandardCharsets.UTF_8.name());
+            } catch (Exception ignored) {
+                return rest.substring(0, end);
+            }
+        }
+        if (uri.getHost() != null && raw.contains("scheme=https")) {
+            String path = uri.getEncodedPath() == null ? "" : uri.getEncodedPath();
+            String query = uri.getEncodedQuery() == null ? "" : "?" + uri.getEncodedQuery();
+            return "https://" + uri.getHost() + path + query;
+        }
+        return null;
     }
 
     private static boolean keepInside(Uri uri) {
@@ -83,14 +123,23 @@ public class MainActivity extends BridgeActivity {
         }
         host = host.toLowerCase();
         return host.equals("localhost")
+            || host.equals("127.0.0.1")
             || host.equals("www.sofergestion.es")
             || host.equals("sofergestion.es")
             || host.endsWith(".supabase.co")
+            || host.equals("google.com")
+            || host.equals("g.co")
+            || host.equals("recaptcha.net")
+            || host.endsWith(".recaptcha.net")
+            || host.equals("googleapis.com")
+            || host.endsWith(".googleapis.com")
+            || host.equals("gstatic.com")
+            || host.endsWith(".gstatic.com")
+            || host.equals("googleusercontent.com")
+            || host.endsWith(".googleusercontent.com")
             || host.equals("accounts.google.com")
             || host.endsWith(".google.com")
             || host.endsWith(".google.es")
-            || host.endsWith(".gstatic.com")
-            || host.endsWith(".googleusercontent.com")
             || host.contains("youtube.com");
     }
 }
