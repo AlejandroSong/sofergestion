@@ -2,49 +2,56 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <title>SOFER Gestión — Google</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SOFER Gestión — Entrando</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, sans-serif;
+        background: #f7f9fc;
+        color: #0a2e6d;
+        font-size: 15px;
+        font-weight: 600;
+      }
+    </style>
   </head>
   <body>
+    <p>Entrando con Google…</p>
     <script>
       (function () {
+        var TOKEN_KEY = 'sofer-google-id-token';
+        var ERROR_KEY = 'sofer-google-id-error';
         var params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         if (!params.get('id_token') && !params.get('error')) {
           params = new URLSearchParams(window.location.search);
         }
         var idToken = params.get('id_token');
         var error = params.get('error_description') || params.get('error');
-        var payload = {
-          type: 'sofer-google-id-token',
-          idToken: idToken,
-          error: error,
-        };
         try {
-          if (idToken) sessionStorage.setItem('sofer-google-id-token', idToken);
-          if (error) sessionStorage.setItem('sofer-google-id-error', error);
+          if (idToken) {
+            sessionStorage.setItem(TOKEN_KEY, idToken);
+            localStorage.setItem(TOKEN_KEY, idToken);
+          }
+          if (error) {
+            sessionStorage.setItem(ERROR_KEY, error);
+            localStorage.setItem(ERROR_KEY, error);
+          }
         } catch (e) {}
         if (window.opener) {
-          window.opener.postMessage(payload, window.location.origin);
+          try {
+            window.opener.postMessage(
+              { type: 'sofer-google-id-token', idToken: idToken, error: error },
+              window.location.origin
+            );
+          } catch (e) {}
           window.close();
           return;
         }
-        var cap = window.Capacitor;
-        var inNative =
-          (cap && ((cap.isNativePlatform && cap.isNativePlatform()) || (cap.getPlatform && cap.getPlatform() !== 'web'))) ||
-          (/Android/i.test(navigator.userAgent) && /;\s*wv\)/i.test(navigator.userAgent));
-        if (inNative) {
-          window.location.replace(window.location.origin + '/');
-          return;
-        }
-        var appCallback = 'es.sofergestion.app://google-callback';
-        var fragment = window.location.hash;
-        if (!fragment && (idToken || error)) {
-          fragment = '#' + (idToken ? 'id_token=' + encodeURIComponent(idToken) : 'error=' + encodeURIComponent(error));
-        }
-        window.location.replace(appCallback + fragment);
-        setTimeout(function () {
-          window.location.replace(window.location.origin + '/');
-        }, 400);
-
+        window.location.replace(window.location.origin + '/');
       })();
     </script>
   </body>

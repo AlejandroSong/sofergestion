@@ -971,7 +971,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       token,
     });
     if (error) {
-      return { success: false, message: error.message };
+      const raw = error.message || '';
+      const message = /audience|jwt|invalid/i.test(raw)
+        ? 'Google no validó la sesión. Vuelve a pulsar Continuar con Google.'
+        : raw || 'No se pudo iniciar sesión con Google';
+      return { success: false, message };
     }
     return { success: true };
   };

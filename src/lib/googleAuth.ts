@@ -34,10 +34,23 @@ export function isInAppShell(): boolean {
 
 export function consumeGoogleRedirectResult(): { idToken?: string; error?: string } {
   try {
-    const idToken = sessionStorage.getItem(TOKEN_KEY) || undefined;
-    const error = sessionStorage.getItem(ERROR_KEY) || undefined;
-    if (idToken) sessionStorage.removeItem(TOKEN_KEY);
-    if (error) sessionStorage.removeItem(ERROR_KEY);
+    const fromHash = parseGoogleCallbackUrl(window.location.href);
+    const idToken =
+      sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || fromHash.idToken || undefined;
+    const error =
+      sessionStorage.getItem(ERROR_KEY) || localStorage.getItem(ERROR_KEY) || fromHash.error || undefined;
+    if (idToken) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_KEY);
+    }
+    if (error) {
+      sessionStorage.removeItem(ERROR_KEY);
+      localStorage.removeItem(ERROR_KEY);
+    }
+    if (fromHash.idToken || fromHash.error) {
+      const clean = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, '', clean);
+    }
     return { idToken, error };
   } catch {
     return {};
@@ -77,7 +90,7 @@ export function googleAuthUrl(clientId: string): string {
     ? `${PRODUCTION_ORIGIN}${GOOGLE_CALLBACK_PATH}`
     : googleRedirectUri();
   url.searchParams.set('redirect_uri', redirect);
-  url.searchParams.set('nonce', crypto.randomUUID());
+  url.searchParams.set('nonce', (crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}`);
   url.searchParams.set('prompt', 'select_account');
   return url.toString();
 }

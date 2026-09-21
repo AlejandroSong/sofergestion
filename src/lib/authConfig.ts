@@ -23,7 +23,7 @@ export function googleRedirectUri(): string {
 
 export function isAndroidWebView(): boolean {
   const ua = navigator.userAgent || '';
-  return /Android/i.test(ua) && /;\s*wv\)/i.test(ua);
+  return /Android/i.test(ua) && (/;\s*wv\)/i.test(ua) || /SOFERGestion/i.test(ua));
 }
 
 export function redirectPreviewToProduction(): boolean {

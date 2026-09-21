@@ -11,18 +11,41 @@ export const AuthScreen: React.FC = () => {
   const [isBusy, setIsBusy] = useState(false);
 
   useEffect(() => {
-    const pending = consumeGoogleRedirectResult();
-    if (pending.error) {
-      setErrorMessage(pending.error);
-      return;
-    }
-    if (pending.idToken) {
-      setIsBusy(true);
-      void signInWithGoogleCredential(pending.idToken).then((res) => {
+    let cancelled = false;
+
+    const finish = (res: { success: boolean; message?: string }) => {
+      if (cancelled) return;
+      setIsBusy(false);
+      if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
+    };
+
+    const applyPending = () => {
+      const pending = consumeGoogleRedirectResult();
+      if (pending.error) {
+        setErrorMessage(pending.error);
         setIsBusy(false);
-        if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
-      });
+        return true;
+      }
+      if (pending.idToken) {
+        setIsBusy(true);
+        void signInWithGoogleCredential(pending.idToken).then(finish);
+        return true;
+      }
+      return false;
+    };
+
+    if (applyPending()) {
+      return () => {
+        cancelled = true;
+      };
     }
+    const retry = window.setTimeout(() => {
+      if (!cancelled) applyPending();
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retry);
+    };
   }, [signInWithGoogleCredential]);
 
   useEffect(() => {

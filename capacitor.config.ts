@@ -27,6 +27,7 @@ const config = {
   },
   android: {
     allowMixedContent: false,
+    appendUserAgent: 'SOFERGestion/2.0.2',
   },
   plugins: {
     SplashScreen: {

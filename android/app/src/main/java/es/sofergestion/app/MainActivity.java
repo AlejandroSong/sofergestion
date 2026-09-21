@@ -36,8 +36,8 @@ public class MainActivity extends BridgeActivity {
         settings.setDomStorageEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         String ua = settings.getUserAgentString();
-        if (ua != null && ua.contains("; wv")) {
-            settings.setUserAgentString(ua.replace("; wv", ""));
+        if (ua != null && !ua.contains("SOFERGestion")) {
+            settings.setUserAgentString(ua + " SOFERGestion/2.0.2");
         }
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
@@ -68,6 +68,11 @@ public class MainActivity extends BridgeActivity {
                 String scheme = uri.getScheme() != null ? uri.getScheme().toLowerCase() : "";
                 if (scheme.isEmpty() || scheme.equals("about") || scheme.equals("data") || scheme.equals("blob")) {
                     return false;
+                }
+                if (scheme.equals("es.sofergestion.app")) {
+                    String dest = "https://www.sofergestion.es/";
+                    view.loadUrl(dest);
+                    return true;
                 }
                 if (scheme.equals("intent")
                     || scheme.equals("market")
