@@ -124,7 +124,10 @@ export async function fetchProfiles(): Promise<User[]> {
     if (error) console.warn('No se pudieron leer perfiles:', error.message);
     return [];
   }
-  return (data as ProfileRow[]).map(profileToUser);
+  const revoked = new Set((await fetchRevokedEmails()).map((email) => email.trim().toLowerCase()));
+  return (data as ProfileRow[])
+    .map(profileToUser)
+    .filter((user) => !revoked.has(user.email.trim().toLowerCase()));
 }
 
 export async function persistProfile(user: User, authUserId?: string): Promise<{ ok: boolean; message?: string }> {
@@ -203,6 +206,8 @@ export async function persistProfile(user: User, authUserId?: string): Promise<{
 export async function revokeAccess(email: string) {
   if (!supabase) return;
   const normalized = email.trim().toLowerCase();
+  const rpc = await supabase.rpc('remove_profile_by_email', { target_email: normalized });
+  if (!rpc.error) return;
   await supabase.from('access_revocations').upsert({ email: normalized });
   await supabase.from('profiles').delete().eq('email', normalized);
 }

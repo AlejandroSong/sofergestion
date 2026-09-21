@@ -14,7 +14,7 @@ import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, is
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
 import { fetchSharedMap, saveShared, subscribeShared, stableJson, SHARED_KEYS, type SharedKey } from '../lib/sharedStore';
-import { applyRoleDirectory, clearRevocation, ensureSelfAdmin, fetchProfiles, isEmailRevoked, mergeRoleDirectories, mergeUsersByEmail, persistProfile, revokeAccess, toRoleDirectory, upsertProfile, type RoleDirectoryEntry } from '../lib/profiles';
+import { applyRoleDirectory, clearRevocation, ensureSelfAdmin, fetchProfiles, fetchRevokedEmails, isEmailRevoked, mergeRoleDirectories, mergeUsersByEmail, persistProfile, revokeAccess, toRoleDirectory, upsertProfile, type RoleDirectoryEntry } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
 import { parseHousing } from '../utils/housing';
@@ -246,6 +246,24 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const REMOVED_EMAILS_KEY = 'gest_v2_removed_emails';
+
+function loadRemovedEmails(): string[] {
+  try {
+    const raw = localStorage.getItem(REMOVED_EMAILS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.map((email) => String(email).trim().toLowerCase()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRemovedEmails(emails: Set<string>) {
+  localStorage.setItem(REMOVED_EMAILS_KEY, JSON.stringify([...emails]));
+}
+
 function omitUndefined<T extends object>(obj: T): Partial<T> {
   const next: Partial<T> = {};
   (Object.keys(obj) as (keyof T)[]).forEach((key) => {
@@ -268,7 +286,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const saved = localStorage.getItem('gest_v2_users');
     const loaded: User[] = saved ? JSON.parse(saved) : INITIAL_USERS;
-    return withSingleAdmin(loaded);
+    const removed = new Set(loadRemovedEmails());
+    return withSingleAdmin(loaded.filter((u) => !removed.has(u.email.trim().toLowerCase())));
   });
 
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
@@ -298,6 +317,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   usersRef.current = users;
   const roleDirectoryRef = useRef<RoleDirectoryEntry[]>([]);
   const pendingRoleWritesRef = useRef<Map<string, RoleDirectoryEntry & { at: number }>>(new Map());
+  const removedEmailsRef = useRef<Set<string>>(new Set(loadRemovedEmails()));
+
+  const dropRemovedUsers = (list: User[]) =>
+    list.filter((u) => !removedEmailsRef.current.has(u.email.trim().toLowerCase()));
+
+  const dropRemovedDirectory = (list: RoleDirectoryEntry[]) =>
+    list.filter((row) => !removedEmailsRef.current.has((row.email || '').trim().toLowerCase()));
 
   const applyPendingRoleWrites = (list: User[]): User[] => {
     const now = Date.now();
@@ -328,11 +354,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const withDirectory = (list: User[]) =>
-    withSingleAdmin(applyPendingRoleWrites(applyRoleDirectory(list, roleDirectoryRef.current)));
+    dropRemovedUsers(
+      withSingleAdmin(applyPendingRoleWrites(applyRoleDirectory(list, roleDirectoryRef.current)))
+    );
 
   // Drop leftover demo accounts without forcing David back as admin
   useEffect(() => {
-    const nextUsers = withSingleAdmin(users);
+    const nextUsers = dropRemovedUsers(withSingleAdmin(users));
     const usersChanged =
       nextUsers.length !== users.length ||
       nextUsers.some((u, i) => u.id !== users[i]?.id || u.email !== users[i]?.email || u.name !== users[i]?.name || u.role !== users[i]?.role);
@@ -352,6 +380,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...userData,
       id: `user-${Date.now()}`
     };
+    const email = newUser.email.trim().toLowerCase();
+    removedEmailsRef.current.delete(email);
+    saveRemovedEmails(removedEmailsRef.current);
+    void clearRevocation(email);
     const newUsers = [...users, newUser];
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
@@ -697,7 +729,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo el administrador puede eliminar cuentas.');
       return;
     }
-    const userToDelete = users.find((u) => u.id === id);
+    const userToDelete =
+      users.find((u) => u.id === id) ||
+      users.find((u) => u.email.trim().toLowerCase() === id.trim().toLowerCase());
     if (!userToDelete) return;
     if (isLastActiveAdmin(userToDelete, users)) {
       showToast(
@@ -707,13 +741,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       return;
     }
-    const newUsers = users.filter((u) => u.id !== id);
+    const email = userToDelete.email.trim().toLowerCase();
+    removedEmailsRef.current.add(email);
+    saveRemovedEmails(removedEmailsRef.current);
+    pendingRoleWritesRef.current.delete(email);
+    const newUsers = users.filter(
+      (u) => u.id !== userToDelete.id && u.email.trim().toLowerCase() !== email
+    );
+    usersRef.current = newUsers;
     setUsers(newUsers);
     localStorage.setItem('gest_v2_users', JSON.stringify(newUsers));
-    void revokeAccess(userToDelete.email);
-    if (supabase && /^[0-9a-f-]{36}$/i.test(userToDelete.id)) {
-      void supabase.from('profiles').delete().eq('id', userToDelete.id);
-    }
+    const directory = dropRemovedDirectory(toRoleDirectory(newUsers));
+    roleDirectoryRef.current = directory;
+    flushSharedNow('role_directory', directory);
+    setCustomRoles((prev) =>
+      prev.map((r) => ({
+        ...r,
+        memberEmails: r.memberEmails.filter((member) => member !== email),
+      }))
+    );
+    void revokeAccess(email);
 
     const deletedIsSelf =
       currentUser.id === id ||
@@ -735,6 +782,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const normalized = email.trim().toLowerCase();
     if (!normalized) return;
+    removedEmailsRef.current.delete(normalized);
+    saveRemovedEmails(removedEmailsRef.current);
     await clearRevocation(normalized);
     showToast(
       'Cuenta reactivada',
@@ -1154,7 +1203,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
         break;
       case 'role_directory': {
-        const directory = payload as RoleDirectoryEntry[];
+        const directory = dropRemovedDirectory(payload as RoleDirectoryEntry[]);
         roleDirectoryRef.current = directory;
         setUsers((prev) => {
           const merged = withDirectory(prev);
@@ -1223,14 +1272,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const local = localSharedFor(key);
       if (key === 'role_directory') {
         const remoteDir = Array.isArray(remotePayload) ? (remotePayload as RoleDirectoryEntry[]) : [];
-        const mergedDir = mergeRoleDirectories(local as RoleDirectoryEntry[], remoteDir);
-        if (mergedDir.length > 0) {
-          applySharedPayload(key, mergedDir);
-          const mergedJson = stableJson(mergedDir);
-          if (mergedJson !== stableJson(remoteDir)) {
-            lastSharedJsonRef.current[key] = mergedJson;
-            void saveShared(key, mergedDir);
-          }
+        const mergedDir = dropRemovedDirectory(
+          mergeRoleDirectories(local as RoleDirectoryEntry[], remoteDir)
+        );
+        applySharedPayload(key, mergedDir);
+        const mergedJson = stableJson(mergedDir);
+        if (mergedJson !== stableJson(remoteDir)) {
+          lastSharedJsonRef.current[key] = mergedJson;
+          void saveShared(key, mergedDir);
         }
         continue;
       }
@@ -1291,7 +1340,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [customRoles]);
 
   useEffect(() => {
-    const directory = toRoleDirectory(users);
+    const directory = dropRemovedDirectory(toRoleDirectory(users));
     roleDirectoryRef.current = directory;
     localStorage.setItem('gest_v2_users', JSON.stringify(users));
     if (!sharedReadyRef.current) return;
@@ -1582,7 +1631,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (key === 'role_directory' && Array.isArray(payload)) {
         applySharedPayload(
           key,
-          mergeRoleDirectories(toRoleDirectory(usersRef.current), payload as RoleDirectoryEntry[])
+          dropRemovedDirectory(
+            mergeRoleDirectories(toRoleDirectory(usersRef.current), payload as RoleDirectoryEntry[])
+          )
         );
         return;
       }
@@ -1599,7 +1650,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isAuthenticated]);
 
   const refreshDirectory = useCallback(async () => {
-    const remote = await fetchProfiles();
+    const [remote, revoked] = await Promise.all([fetchProfiles(), fetchRevokedEmails()]);
+    revoked.forEach((email) => removedEmailsRef.current.add(email.trim().toLowerCase()));
+    if (revoked.length) saveRemovedEmails(removedEmailsRef.current);
     setUsers((prev) => {
       const merged = withDirectory(remote.length ? mergeUsersByEmail(prev, remote) : prev);
       localStorage.setItem('gest_v2_users', JSON.stringify(merged));
@@ -3202,7 +3255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const visibleUsers = useMemo(() => {
-    if (currentUser.role === 'admin') return users;
+    if (currentUser.role === 'admin') return dropRemovedUsers(users);
     if (currentUser.role === 'president') {
       return users.filter(
         (u) =>

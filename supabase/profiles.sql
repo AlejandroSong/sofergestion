@@ -196,6 +196,33 @@ create policy "revocations_write"
   using (public.is_app_admin())
   with check (public.is_app_admin());
 
+create or replace function public.remove_profile_by_email(target_email text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized text := lower(trim(coalesce(target_email, '')));
+begin
+  if normalized = '' then
+    raise exception 'email required';
+  end if;
+  if not public.is_app_admin() then
+    raise exception 'not allowed';
+  end if;
+
+  insert into public.access_revocations (email)
+  values (normalized)
+  on conflict (email) do update set revoked_at = now();
+
+  delete from public.profiles
+  where lower(trim(email)) = normalized;
+end;
+$$;
+
+grant execute on function public.remove_profile_by_email(text) to authenticated;
+
 alter table public.profiles replica identity full;
 
 do $$
