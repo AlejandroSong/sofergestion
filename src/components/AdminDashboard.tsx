@@ -5,29 +5,21 @@ import {
   TrendingUp,
   TrendingDown,
   Wrench,
-  AlertCircle,
   Plus,
   ArrowRight,
-  FileDown,
   FileSpreadsheet,
   Trash2,
   CheckCircle2,
   Users,
   Search,
-  ExternalLink,
   Coins,
-  Receipt,
   UserCheck,
-  CreditCard,
-  Edit2,
   Clock,
   ShieldCheck,
   MapPin,
   Calendar,
   ArrowUpRight,
-  Filter,
   Hourglass,
-  Tag,
   AlertTriangle,
   Sparkles,
   Settings2,
@@ -38,7 +30,7 @@ import { collectWorkerRoster, countResolvedJobs } from '../utils/workers';
 import { asText, initials, statusLabel } from '../utils/safe';
 import { scrollToSection } from '../utils/scroll';
 import { canDeleteFinishedTicket } from '../utils/permissions';
-import { Building, Ticket } from '../types';
+import { Building } from '../types';
 import { WorkerPayoutModal } from './WorkerPayoutModal';
 import { AdjustRepairFundModal } from './AdjustRepairFundModal';
 import { ExpirationAlerts } from './ExpirationAlerts';
@@ -83,8 +75,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     resetAllOperations,
     setTicketPriority,
     setTicketsPriority,
-    adminInboxTarget,
-    setAdminInboxTarget,
   } = useApp();
 
   const [buildingSearch, setBuildingSearch] = useState('');
@@ -109,7 +99,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Incidents board filters
   const [ticketSearch, setTicketSearch] = useState('');
-  const [ticketStatusFilter, setTicketStatusFilter] = useState<'all' | 'assigned_to_me' | 'pendiente' | 'en_proceso' | 'resuelta'>('all');
+  const [ticketStatusFilter, setTicketStatusFilter] = useState<'all' | 'pendiente' | 'en_proceso' | 'resuelta'>('all');
   const [ticketPriorityFilter, setTicketPriorityFilter] = useState<string>('all');
   const [ticketBuildingIds, setTicketBuildingIds] = useState<string[]>([]);
   const [selectedIncidentIds, setSelectedIncidentIds] = useState<string[]>([]);
@@ -135,20 +125,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (byDate) return byDate;
     return asText(b.id).localeCompare(asText(a.id));
   });
-  const isWorker = currentUser.role === 'worker';
-  const myWorkerTickets = tickets.filter(
-    (t) => t.assignedWorkerId === currentUser.id || t.assignedWorkerName === currentUser.name
-  );
   const pendingTicketsCount = tickets.filter((t) => t.status === 'pendiente').length;
   const inProgressTicketsCount = tickets.filter((t) => t.status === 'en_proceso').length;
   const resolvedTicketsCount = tickets.filter((t) => t.status === 'resuelta').length;
   const urgentTicketsCount = tickets.filter((t) => t.priority === 'urgente' && t.status !== 'resuelta').length;
 
   const filteredIncidents = tickets.filter((t) => {
-    if (ticketStatusFilter === 'assigned_to_me') {
-      const isMine = t.assignedWorkerId === currentUser.id || t.assignedWorkerName === currentUser.name;
-      if (!isMine) return false;
-    } else if (ticketStatusFilter !== 'all' && t.status !== ticketStatusFilter) {
+    if (ticketStatusFilter !== 'all' && t.status !== ticketStatusFilter) {
       return false;
     }
     if (ticketPriorityFilter !== 'all' && t.priority !== ticketPriorityFilter) return false;
@@ -189,99 +172,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0A2E6D]/15 border border-[#0A2E6D]/40 text-[#0A2E6D] text-xs font-semibold">
               <ShieldCheck className="w-3.5 h-3.5 text-[#0A2E6D]" />
-              {isWorker
-                ? `Panel de Operario / Técnico • ${currentUser.name} (${currentUser.specialty || 'Mantenimiento General'})`
-                : 'Panel de Control Central • Administrador de fincas'}
+              Panel de Control Central • Administrador de fincas
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#16202E]">
-              {isWorker
-                ? 'Gestión de Incidencias & Tareas de Mantenimiento'
-                : 'Gestión Integral de Edificios & Finanzas'}
+              Gestión Integral de Edificios & Finanzas
             </h2>
             <p className="text-xs sm:text-sm text-[#5A6B82] max-w-2xl leading-relaxed">
-              {isWorker
-                ? `Bienvenido/a ${currentUser.name}. Visualiza y atiende tus incidencias asignadas, consulta el estado de las averías en los edificios y añade los gastos de repuestos empleados.`
-                : 'Supervisión de inmuebles, contabilidad de ingresos/gastos, control exclusivo de pagos a operarios y auditoría de incidencias generales.'}
+              Supervisión de inmuebles, contabilidad de ingresos/gastos, control exclusivo de pagos a operarios y auditoría de incidencias generales.
             </p>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => scrollToSection('buildings-section')}
+                className="px-3 py-1.5 rounded-full bg-white border border-[#E2E8F0] text-xs font-semibold text-[#16202E] cursor-pointer"
+              >
+                {buildings.length} {buildings.length === 1 ? 'finca' : 'fincas'}
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('workers-section')}
+                className="px-3 py-1.5 rounded-full bg-white border border-[#E2E8F0] text-xs font-semibold text-[#16202E] cursor-pointer"
+              >
+                {workerRoster.length} {workerRoster.length === 1 ? 'operario' : 'operarios'}
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('tickets-section')}
+                className="px-3 py-1.5 rounded-full bg-white border border-[#E2E8F0] text-xs font-semibold text-[#16202E] cursor-pointer"
+              >
+                {pendingTicketsCount + inProgressTicketsCount} incidencias abiertas
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection('accounting-section')}
+                className="px-3 py-1.5 rounded-full bg-white border border-[#E2E8F0] text-xs font-semibold text-[#16202E] cursor-pointer"
+              >
+                {ledger.length} {ledger.length === 1 ? 'asiento' : 'asientos'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       <ExpirationAlerts />
 
-      {currentUser.role === 'admin' && (
-        <button
-          type="button"
-          onClick={() => onOpenControlPanel?.()}
-          className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-[#0A2E6D] text-white rounded-2xl text-sm font-bold cursor-pointer shadow-md"
-        >
-          <span>Abrir panel: precios, personas y fincas</span>
-          <Settings2 className="w-4 h-4" />
-        </button>
-      )}
-
-      {/* Acciones Rápidas (Role-Specific Menu) */}
+      {/* Acciones Rápidas */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {isWorker ? (
-          <>
-            <button
-              onClick={onOpenCreateTicket}
-              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#0A2E6D]/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
-            >
-              <div className="p-3 bg-blue-50 text-[#0A2E6D] rounded-xl group-hover:scale-110 transition-transform">
-                <Plus className="w-6 h-6" />
-              </div>
-              <span className="text-xs font-bold text-[#16202E] text-center">Nueva Incidencia</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setTicketStatusFilter('assigned_to_me');
-                document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-green-600/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
-            >
-              <div className="p-3 bg-green-50 text-green-600 rounded-xl group-hover:scale-110 transition-transform">
-                <Wrench className="w-6 h-6" />
-              </div>
-              <span className="text-xs font-bold text-[#16202E] text-center">Mis Incidencias</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setTicketStatusFilter('all');
-                document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-amber-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
-            >
-              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl group-hover:scale-110 transition-transform">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <span className="text-xs font-bold text-[#16202E] text-center">Ver Todas Incidencias</span>
-            </button>
-
-            <button
-              onClick={onOpenReports}
-              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-purple-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
-            >
-              <div className="p-3 bg-purple-50 text-purple-600 rounded-xl group-hover:scale-110 transition-transform">
-                <FileSpreadsheet className="w-6 h-6" />
-              </div>
-              <span className="text-xs font-bold text-[#16202E] text-center">Incidencias & Balances</span>
-            </button>
-
-            <button
-              onClick={() => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth' })}
-              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-teal-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
-            >
-              <div className="p-3 bg-teal-50 text-teal-600 rounded-xl group-hover:scale-110 transition-transform">
-                <Building2 className="w-6 h-6" />
-              </div>
-              <span className="text-xs font-bold text-[#16202E] text-center">Edificios registrados</span>
-            </button>
-          </>
-        ) : (
-          <>
             <button
               onClick={() => onOpenControlPanel?.()}
               className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-[#0A2E6D]/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
@@ -300,6 +236,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Plus className="w-6 h-6" />
               </div>
               <span className="text-xs font-bold text-[#16202E] text-center">Nuevo Edificio</span>
+            </button>
+
+            <button
+              onClick={onOpenCreateTicket}
+              className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-orange-400/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
+            >
+              <div className="p-3 bg-orange-50 text-orange-600 rounded-xl group-hover:scale-110 transition-transform">
+                <Wrench className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-[#16202E] text-center">Nueva Incidencia</span>
             </button>
 
             <button
@@ -353,7 +299,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
-              onClick={() => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              onClick={() => scrollToSection('buildings-section')}
               className="flex flex-col items-center justify-center gap-2 p-4 bg-white hover:bg-slate-50 border border-[#E2E8F0] hover:border-teal-500/40 rounded-2xl transition-all cursor-pointer shadow-sm group"
             >
               <div className="p-3 bg-teal-50 text-teal-600 rounded-xl group-hover:scale-110 transition-transform">
@@ -361,8 +307,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <span className="text-xs font-bold text-[#16202E] text-center">Mis edificios</span>
             </button>
-          </>
-        )}
       </div>
 
       {currentUser.role === 'admin' && buildings.length > 0 && (
@@ -403,110 +347,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Global Operations & Metrics KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {isWorker ? (
-          <>
-            {/* Worker KPI 1: Mis Incidencias Asignadas */}
-            <div
-              onClick={() => {
-                setTicketStatusFilter('assigned_to_me');
-                document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-[#0A2E6D] transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#5A6B82] uppercase tracking-wider">
-                  Mis Incidencias Asignadas
-                </span>
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-[#0A2E6D]">
-                  <Wrench className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <p className="text-2xl sm:text-3xl font-bold text-[#16202E]">{myWorkerTickets.length}</p>
-                <p className="text-xs text-[#5A6B82] mt-1 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                  {myWorkerTickets.filter((t) => t.status === 'resuelta').length} resueltas •{' '}
-                  {myWorkerTickets.filter((t) => t.status === 'en_proceso').length} activas
-                </p>
-              </div>
-            </div>
-
-            {/* Worker KPI 2: Incidencias Pendientes */}
-            <div
-              onClick={() => {
-                setTicketStatusFilter('pendiente');
-                document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-amber-400 transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#5A6B82] uppercase tracking-wider">
-                  Incidencias Pendientes
-                </span>
-                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-600">
-                  <Clock className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <p className="text-2xl sm:text-3xl font-bold text-amber-600">{pendingTicketsCount}</p>
-                <p className="text-xs text-[#5A6B82] mt-1">
-                  En espera de intervención técnica
-                </p>
-              </div>
-            </div>
-
-            {/* Worker KPI 3: Incidencias En Proceso */}
-            <div
-              onClick={() => {
-                setTicketStatusFilter('en_proceso');
-                document.getElementById('tickets-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-blue-400 transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#5A6B82] uppercase tracking-wider">
-                  En Proceso de Reparación
-                </span>
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-600">
-                  <Hourglass className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <p className="text-2xl sm:text-3xl font-bold text-blue-600">{inProgressTicketsCount}</p>
-                <p className="text-xs text-[#5A6B82] mt-1">
-                  Trabajos en curso y repuestos añadidos
-                </p>
-              </div>
-            </div>
-
-            {/* Worker KPI 4: Cajas Reparación */}
-            <div
-              onClick={() => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth' })}
-              className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-yellow-400 transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#5A6B82] uppercase tracking-wider">
-                  Total Cajas de Reparación
-                </span>
-                <div className="p-2.5 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-600">
-                  <Coins className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <p className="text-2xl sm:text-3xl font-bold text-yellow-600 font-mono">
-                  {formatCurrency(totalRepairBoxesGlobal)}
-                </p>
-                <p className="text-xs text-[#5A6B82] mt-1">
-                  Fondos para materiales en {buildings.length} edificios
-                </p>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
             {/* Admin KPI 1: Inmuebles */}
             <div
-              onClick={() => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => scrollToSection('buildings-section')}
               className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-[#0A2E6D]/40 transition-all"
             >
               <div className="flex items-center justify-between">
@@ -528,7 +371,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* Admin KPI 2: Balance Neto */}
             <div
-              onClick={() => document.getElementById('accounting-section')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => scrollToSection('accounting-section')}
               className="bg-blue-50 border border-blue-200 text-blue-950 p-4 rounded-xl shadow-sm flex flex-col justify-between cursor-pointer hover:border-blue-400 transition-all"
             >
               <div className="flex items-center justify-between">
@@ -557,7 +400,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* Admin KPI 3: Cajas Reparación */}
             <div
-              onClick={() => document.getElementById('buildings-section')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => scrollToSection('buildings-section')}
               className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-yellow-400 transition-all"
             >
               <div className="flex items-center justify-between">
@@ -573,14 +416,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {formatCurrency(totalRepairBoxesGlobal)}
                 </p>
                 <p className="text-xs text-[#5A6B82] mt-1">
-                  Fondos asignados en los {buildings.length} edificios para averías
+                  Fondos de caja para averías
                 </p>
               </div>
             </div>
 
             {/* Admin KPI 4: Pagos a Trabajadores (Nómina Liquidada) */}
             <div
-              onClick={() => document.getElementById('payroll-section')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => scrollToSection('payroll-section')}
               className="bg-[#F4F6FA] p-5 rounded-2xl border border-[#E2E8F0] shadow-md flex flex-col justify-between cursor-pointer hover:border-purple-400 transition-all"
             >
               <div className="flex items-center justify-between">
@@ -600,8 +443,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
             </div>
-          </>
-        )}
       </div>
 
       {/* Buildings Portfolio & Repair Boxes Section */}
@@ -882,7 +723,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <th className="py-2.5 px-3 text-center">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#202020]">
+              <tbody className="divide-y divide-[#E2E8F0]">
                 {workerPayouts.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-6 text-center text-[#5A6B82]">
@@ -1097,19 +938,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Todas ({tickets.length})
             </button>
 
-            {isWorker && (
-              <button
-                onClick={() => setTicketStatusFilter('assigned_to_me')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                  ticketStatusFilter === 'assigned_to_me'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                }`}
-              >
-                <Wrench className="w-3.5 h-3.5" />
-                Mis Asignadas ({myWorkerTickets.length})
-              </button>
-            )}
 
             <button
               onClick={() => setTicketStatusFilter('pendiente')}
