@@ -25,6 +25,7 @@
       (function () {
         var TOKEN_KEY = 'sofer-google-id-token';
         var ERROR_KEY = 'sofer-google-id-error';
+        var APP_CALLBACK = 'es.sofergestion.app://google-callback';
         var params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         if (!params.get('id_token') && !params.get('error')) {
           params = new URLSearchParams(window.location.search);
@@ -51,7 +52,21 @@
           window.close();
           return;
         }
-        window.location.replace(window.location.origin + '/');
+        var ua = navigator.userAgent || '';
+        var cap = window.Capacitor;
+        var inAppWebView =
+          (cap &&
+            ((cap.isNativePlatform && cap.isNativePlatform()) ||
+              (cap.getPlatform && cap.getPlatform() !== 'web'))) ||
+          (/Android/i.test(ua) && (/;\s*wv\)/i.test(ua) || /SOFERGestion/i.test(ua)));
+        if (inAppWebView) {
+          window.location.replace(window.location.origin + '/');
+          return;
+        }
+        var q = [];
+        if (idToken) q.push('id_token=' + encodeURIComponent(idToken));
+        if (error) q.push('error=' + encodeURIComponent(error));
+        window.location.replace(APP_CALLBACK + (q.length ? '?' + q.join('&') : ''));
       })();
     </script>
   </body>

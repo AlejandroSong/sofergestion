@@ -72,13 +72,22 @@ function isGoogleReturnUrl(url: string): boolean {
 }
 
 function parseGoogleCallbackUrl(url: string): { idToken?: string; error?: string } {
-  const parsed = new URL(url);
-  const raw = parsed.hash ? parsed.hash.slice(1) : parsed.search.slice(1);
-  const params = new URLSearchParams(raw);
-  return {
-    idToken: params.get('id_token') || undefined,
-    error: params.get('error_description') || params.get('error') || undefined,
-  };
+  try {
+    const parsed = new URL(url);
+    const raw = parsed.hash ? parsed.hash.slice(1) : parsed.search.slice(1);
+    const params = new URLSearchParams(raw);
+    return {
+      idToken: params.get('id_token') || undefined,
+      error: params.get('error_description') || params.get('error') || undefined,
+    };
+  } catch {
+    const raw = url.includes('#') ? url.split('#')[1] : url.split('?')[1] || '';
+    const params = new URLSearchParams(raw);
+    return {
+      idToken: params.get('id_token') || undefined,
+      error: params.get('error_description') || params.get('error') || undefined,
+    };
+  }
 }
 
 export function googleAuthUrl(clientId: string): string {
@@ -105,9 +114,13 @@ async function closeBrowser() {
 }
 
 export async function startGoogleRedirect(clientId: string) {
-  // En Android, Browser/Custom Tabs parte el flujo de Google (consent?part= → 400).
-  // El OAuth debe quedarse en el mismo WebView (origin sofergestion.es).
-  window.location.replace(googleAuthUrl(clientId));
+  const url = googleAuthUrl(clientId);
+  if (isNativeShell()) {
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.open({ url, toolbarColor: '#0A2E6D' });
+    return;
+  }
+  window.location.replace(url);
 }
 
 export function listenForGoogleRedirect(
