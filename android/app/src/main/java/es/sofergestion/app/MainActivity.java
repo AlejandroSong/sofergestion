@@ -2,6 +2,8 @@ package es.sofergestion.app;
 
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -9,20 +11,29 @@ import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
 
 public class MainActivity extends BridgeActivity {
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        lockWebViewToSingleWindow();
-        keepGoogleInsideWebView();
+        installWebViewGuards();
+        handler.postDelayed(this::installWebViewGuards, 250);
+        handler.postDelayed(this::installWebViewGuards, 1200);
     }
 
     @Override
     public void onStart() {
         super.onStart();
-        lockWebViewToSingleWindow();
+        installWebViewGuards();
     }
 
-    private void lockWebViewToSingleWindow() {
+    @Override
+    public void onResume() {
+        super.onResume();
+        installWebViewGuards();
+    }
+
+    private void installWebViewGuards() {
         if (this.bridge == null || this.bridge.getWebView() == null) {
             return;
         }
@@ -32,41 +43,49 @@ public class MainActivity extends BridgeActivity {
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
-    }
-
-    private void keepGoogleInsideWebView() {
-        if (this.bridge == null) {
-            return;
-        }
-        WebView webView = this.bridge.getWebView();
-        if (webView == null) {
-            return;
-        }
         webView.setWebViewClient(new BridgeWebViewClient(this.bridge) {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri uri = request.getUrl();
+                return handleUrl(view, request.getUrl());
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return handleUrl(view, url == null ? null : Uri.parse(url));
+            }
+
+            private boolean handleUrl(WebView view, Uri uri) {
                 if (uri == null) {
-                    return super.shouldOverrideUrlLoading(view, request);
-                }
-                String scheme = uri.getScheme() != null ? uri.getScheme() : "";
-                if (scheme.equals("intent") || scheme.equals("market") || scheme.equals("android-app")) {
                     return true;
                 }
-                if (isGoogleAuthUrl(uri)) {
-                    return false;
+                String scheme = uri.getScheme() != null ? uri.getScheme().toLowerCase() : "";
+                if (scheme.equals("intent")
+                    || scheme.equals("market")
+                    || scheme.equals("android-app")
+                    || scheme.equals("googlechrome")
+                    || scheme.equals("googlechromes")) {
+                    String fallback = uri.getQueryParameter("browser_fallback_url");
+                    if (fallback != null && keepInside(Uri.parse(fallback))) {
+                        view.loadUrl(fallback);
+                    }
+                    return true;
                 }
-                return super.shouldOverrideUrlLoading(view, request);
+                return !keepInside(uri);
             }
         });
     }
 
-    private static boolean isGoogleAuthUrl(Uri uri) {
-        if (uri == null || uri.getHost() == null) {
+    private static boolean keepInside(Uri uri) {
+        String host = uri.getHost();
+        if (host == null) {
             return false;
         }
-        String host = uri.getHost();
-        return host.equals("accounts.google.com")
+        host = host.toLowerCase();
+        return host.equals("www.sofergestion.es")
+            || host.equals("sofergestion.es")
+            || host.endsWith(".supabase.co")
+            || host.equals("accounts.google.com")
             || host.endsWith(".google.com")
             || host.endsWith(".google.es")
             || host.endsWith(".gstatic.com")

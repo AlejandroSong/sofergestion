@@ -21,3 +21,5 @@ ios/DerivedData
 *.ipa
 *.keystore
 *.jks
+supabase/.temp/
+gestion-de-edificios-y-mantenimiento/

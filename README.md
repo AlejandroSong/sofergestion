@@ -4,13 +4,13 @@ App de administración de fincas (incidencias, finanzas, roles). Acceso solo con
 
 ## URL de producción (cliente)
 
-https://sofergestion.es
+https://www.sofergestion.es
 
-También: https://www.sofergestion.es
+El apex `https://sofergestion.es` redirige a www.
 
 Respaldo Vercel: https://sofergestion-davidalejandroroblesmarquez-5406s-projects.vercel.app
 
-No uses `sofergestion-8za0q407m.vercel.app` ni URLs de Preview (`*-hash.vercel.app`): se redirigen a `sofergestion.es`.
+No uses `sofergestion-8za0q407m.vercel.app` ni URLs de Preview (`*-hash.vercel.app`): se redirigen a `www.sofergestion.es`.
 
 En Vercel, **Deployment Protection → Vercel Authentication** debe estar apagado en Production.
 
@@ -70,4 +70,4 @@ Orígenes de JavaScript y URIs de redirección:
 
 En el SQL Editor ejecuta **una vez** `supabase/sync_realtime.sql` (o todo `supabase/profiles.sql`). Sin eso, fincas e incidencias no salen del navegador de quien las crea.
 
-Site URL de Auth = `https://sofergestion.es`.
+Site URL de Auth = `https://www.sofergestion.es`.
