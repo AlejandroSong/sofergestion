@@ -133,6 +133,9 @@ export async function fetchProfiles(): Promise<User[]> {
 export async function persistProfile(user: User, authUserId?: string): Promise<{ ok: boolean; message?: string }> {
   if (!supabase) return { ok: true };
   const email = user.email.trim().toLowerCase();
+  if (await isEmailRevoked(email)) {
+    return { ok: false, message: 'Esta cuenta está bloqueada y no se puede guardar.' };
+  }
 
   await ensureSelfAdmin();
   const { error: rpcError } = await supabase.rpc('assign_profile_role', {

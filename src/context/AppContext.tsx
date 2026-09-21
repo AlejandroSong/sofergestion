@@ -14,6 +14,16 @@ import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, is
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
 import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
 import { fetchSharedMap, saveShared, subscribeShared, stableJson, SHARED_KEYS, type SharedKey } from '../lib/sharedStore';
+import {
+  applyDeletionRows,
+  deletionKey,
+  dropDeleted,
+  loadDeletionKeys,
+  mergeById,
+  rowsFromKeys,
+  saveDeletionKeys,
+  type DeletionScope,
+} from '../lib/deletions';
 import { applyRoleDirectory, clearRevocation, ensureSelfAdmin, fetchProfiles, fetchRevokedEmails, isEmailRevoked, mergeRoleDirectories, mergeUsersByEmail, persistProfile, revokeAccess, toRoleDirectory, upsertProfile, type RoleDirectoryEntry } from '../lib/profiles';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
@@ -264,35 +274,6 @@ function saveRemovedEmails(emails: Set<string>) {
   localStorage.setItem(REMOVED_EMAILS_KEY, JSON.stringify([...emails]));
 }
 
-const DELETED_BUILDINGS_KEY = 'gest_v2_deleted_buildings';
-
-function loadDeletedBuildingIds(): string[] {
-  try {
-    const raw = localStorage.getItem(DELETED_BUILDINGS_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.map((id) => String(id)).filter(Boolean) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveDeletedBuildingIds(ids: Set<string>) {
-  localStorage.setItem(DELETED_BUILDINGS_KEY, JSON.stringify([...ids]));
-}
-
-function mergeById<T extends { id: string }>(local: T[], remote: T[]): T[] {
-  const map = new Map<string, T>();
-  local.forEach((item) => {
-    if (item?.id) map.set(item.id, item);
-  });
-  remote.forEach((item) => {
-    if (!item?.id) return;
-    const prev = map.get(item.id);
-    map.set(item.id, prev ? { ...prev, ...item } : item);
-  });
-  return [...map.values()];
-}
-
 function omitUndefined<T extends object>(obj: T): Partial<T> {
   const next: Partial<T> = {};
   (Object.keys(obj) as (keyof T)[]).forEach((key) => {
@@ -410,6 +391,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `user-${Date.now()}`
     };
     const email = newUser.email.trim().toLowerCase();
+    if (users.some((u) => u.email.trim().toLowerCase() === email)) {
+      deny('Ya existe una cuenta con ese correo.');
+      return currentUser;
+    }
     removedEmailsRef.current.delete(email);
     saveRemovedEmails(removedEmailsRef.current);
     void clearRevocation(email);
@@ -1082,9 +1067,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: Building[] = JSON.parse(saved);
-        const deleted = new Set(loadDeletedBuildingIds());
+        const deleted = loadDeletionKeys();
         return stripDemoBuildings(parsed)
-          .filter((b) => !deleted.has(b.id))
+          .filter((b) => !deleted.has(deletionKey('buildings', b.id)))
           .map((b) => ({
           ...b,
           commonAreas: b.commonAreas || [],
@@ -1099,43 +1084,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [tickets, setTickets] = useState<Ticket[]>(() => {
     const saved = localStorage.getItem('gest_v2_tickets');
-    return saved ? stripDemoTickets(JSON.parse(saved)) : [];
+    const deleted = loadDeletionKeys();
+    return saved
+      ? dropDeleted('tickets', stripDemoTickets(JSON.parse(saved)), deleted)
+      : [];
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('gest_v2_transactions');
-    return saved ? stripDemoTransactions(JSON.parse(saved)) : [];
+    const deleted = loadDeletionKeys();
+    return saved
+      ? dropDeleted('transactions', stripDemoTransactions(JSON.parse(saved)), deleted)
+      : [];
   });
 
   const [workerPayouts, setWorkerPayouts] = useState<WorkerPayout[]>(() => {
     const saved = localStorage.getItem('gest_v2_worker_payouts');
-    return saved ? stripDemoPayouts(JSON.parse(saved)) : [];
+    const deleted = loadDeletionKeys();
+    return saved ? dropDeleted('worker_payouts', stripDemoPayouts(JSON.parse(saved)), deleted) : [];
   });
 
   const [neighborServices, setNeighborServices] = useState<NeighborService[]>(() => {
     const saved = localStorage.getItem('gest_v2_neighbor_services');
+    const deleted = loadDeletionKeys();
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= INITIAL_NEIGHBOR_SERVICES.length) {
-          return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return dropDeleted('neighbor_services', parsed, deleted);
         }
-        const existingIds = new Set(parsed.map((s: any) => s.id));
-        const newOnes = INITIAL_NEIGHBOR_SERVICES.filter((s) => !existingIds.has(s.id));
-        return [...parsed, ...newOnes];
-      } catch (e) {
-        return INITIAL_NEIGHBOR_SERVICES;
+      } catch {
+        /* use catalog */
       }
     }
-    return INITIAL_NEIGHBOR_SERVICES;
+    return dropDeleted('neighbor_services', INITIAL_NEIGHBOR_SERVICES, deleted);
   });
 
   const [neighborRequests, setNeighborRequests] = useState<NeighborServiceRequest[]>(() => {
     const saved = localStorage.getItem('gest_v2_neighbor_requests');
+    const deleted = loadDeletionKeys();
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return Array.isArray(parsed) ? stripDemoRequests(parsed) : [];
+        return Array.isArray(parsed)
+          ? dropDeleted('neighbor_requests', stripDemoRequests(parsed), deleted)
+          : [];
       } catch {
         return [];
       }
@@ -1145,10 +1138,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [customRoles, setCustomRoles] = useState<CustomRole[]>(() => {
     const saved = localStorage.getItem('gest_v2_custom_roles');
+    const deleted = loadDeletionKeys();
     if (!saved) return [];
     try {
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? dropDeleted('custom_roles', parsed, deleted) : [];
     } catch {
       return [];
     }
@@ -1189,15 +1183,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const lastSharedJsonRef = useRef<Partial<Record<SharedKey, string>>>({});
   const buildingsRef = useRef(buildings);
   buildingsRef.current = buildings;
-  const deletedBuildingIdsRef = useRef<Set<string>>(new Set(loadDeletedBuildingIds()));
+  const deletedRecordsRef = useRef<Set<string>>(loadDeletionKeys());
 
   const dropDeletedBuildings = <T extends { id: string }>(list: T[]) =>
-    list.filter((item) => !deletedBuildingIdsRef.current.has(item.id));
+    dropDeleted('buildings', list, deletedRecordsRef.current);
 
   const dropDeletedBuildingLinks = <T extends { buildingId?: string }>(list: T[]) =>
-    list.filter((item) => !item.buildingId || !deletedBuildingIdsRef.current.has(item.buildingId));
+    list.filter(
+      (item) => !item.buildingId || !deletedRecordsRef.current.has(deletionKey('buildings', item.buildingId))
+    );
 
-  const deletionPayload = () => [...deletedBuildingIdsRef.current].map((id) => ({ id }));
+  const buildingDeletionPayload = () =>
+    rowsFromKeys(deletedRecordsRef.current)
+      .filter((row) => row.scope === 'buildings')
+      .map((row) => ({ id: row.id }));
+
+  const recordDeletionPayload = () => rowsFromKeys(deletedRecordsRef.current);
+
+  const rememberDeleted = (scope: DeletionScope, id: string) => {
+    deletedRecordsRef.current.add(deletionKey(scope, id));
+    saveDeletionKeys(deletedRecordsRef.current);
+    flushSharedNow('record_deletions', recordDeletionPayload());
+    if (scope === 'buildings') {
+      flushSharedNow('building_deletions', buildingDeletionPayload());
+    }
+  };
   const ticketsRef = useRef(tickets);
   ticketsRef.current = tickets;
   const transactionsRef = useRef(transactions);
@@ -1217,11 +1227,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (lastSharedJsonRef.current[key] === json) return;
     lastSharedJsonRef.current[key] = json;
     switch (key) {
+      case 'record_deletions': {
+        applyDeletionRows(deletedRecordsRef.current, payload as { scope?: string; id?: string }[]);
+        saveDeletionKeys(deletedRecordsRef.current);
+        setBuildings((prev) => dropDeletedBuildings(prev));
+        setTickets((prev) =>
+          dropDeleted('tickets', dropDeletedBuildingLinks(prev), deletedRecordsRef.current)
+        );
+        setTransactions((prev) =>
+          dropDeleted('transactions', dropDeletedBuildingLinks(prev), deletedRecordsRef.current)
+        );
+        setWorkerPayouts((prev) => dropDeleted('worker_payouts', prev, deletedRecordsRef.current));
+        setNeighborServices((prev) => dropDeleted('neighbor_services', prev, deletedRecordsRef.current));
+        setNeighborRequests((prev) =>
+          dropDeleted('neighbor_requests', dropDeletedBuildingLinks(prev), deletedRecordsRef.current)
+        );
+        setCustomRoles((prev) => dropDeleted('custom_roles', prev, deletedRecordsRef.current));
+        break;
+      }
       case 'building_deletions': {
         (payload as { id?: string }[]).forEach((row) => {
-          if (row?.id) deletedBuildingIdsRef.current.add(row.id);
+          if (row?.id) deletedRecordsRef.current.add(deletionKey('buildings', row.id));
         });
-        saveDeletedBuildingIds(deletedBuildingIdsRef.current);
+        saveDeletionKeys(deletedRecordsRef.current);
         setBuildings((prev) => dropDeletedBuildings(prev));
         setTickets((prev) => dropDeletedBuildingLinks(prev));
         setTransactions((prev) => dropDeletedBuildingLinks(prev));
@@ -1231,26 +1259,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setBuildings(dropDeletedBuildings(stripDemoBuildings(payload as Building[])));
         break;
       case 'tickets':
-        setTickets(dropDeletedBuildingLinks(stripDemoTickets(payload as Ticket[])));
+        setTickets(
+          dropDeleted(
+            'tickets',
+            dropDeletedBuildingLinks(stripDemoTickets(payload as Ticket[])),
+            deletedRecordsRef.current
+          )
+        );
         break;
       case 'transactions':
-        setTransactions(dropDeletedBuildingLinks(stripDemoTransactions(payload as Transaction[])));
+        setTransactions(
+          dropDeleted(
+            'transactions',
+            dropDeletedBuildingLinks(stripDemoTransactions(payload as Transaction[])),
+            deletedRecordsRef.current
+          )
+        );
         break;
       case 'worker_payouts':
-        setWorkerPayouts(stripDemoPayouts(payload as WorkerPayout[]));
+        setWorkerPayouts(dropDeleted('worker_payouts', stripDemoPayouts(payload as WorkerPayout[]), deletedRecordsRef.current));
         break;
       case 'neighbor_services':
-        setNeighborServices(payload as NeighborService[]);
+        setNeighborServices(dropDeleted('neighbor_services', payload as NeighborService[], deletedRecordsRef.current));
         break;
       case 'neighbor_requests':
-        setNeighborRequests(stripDemoRequests(payload as NeighborServiceRequest[]));
+        setNeighborRequests(
+          dropDeleted(
+            'neighbor_requests',
+            dropDeletedBuildingLinks(stripDemoRequests(payload as NeighborServiceRequest[])),
+            deletedRecordsRef.current
+          )
+        );
         break;
       case 'custom_roles':
         setCustomRoles(
-          (payload as CustomRole[]).map((r) => ({
-            ...r,
-            memberEmails: Array.isArray(r.memberEmails) ? r.memberEmails : [],
-          }))
+          dropDeleted(
+            'custom_roles',
+            (payload as CustomRole[]).map((r) => ({
+              ...r,
+              memberEmails: Array.isArray(r.memberEmails) ? r.memberEmails : [],
+            })),
+            deletedRecordsRef.current
+          )
         );
         break;
       case 'role_directory': {
@@ -1298,8 +1348,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const localSharedFor = (key: SharedKey): unknown[] => {
     switch (key) {
+      case 'record_deletions':
+        return recordDeletionPayload();
       case 'building_deletions':
-        return deletionPayload();
+        return buildingDeletionPayload();
       case 'buildings':
         return buildingsRef.current;
       case 'tickets':
@@ -1323,13 +1375,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     for (const key of SHARED_KEYS) {
       const remotePayload = remote[key];
       const local = localSharedFor(key);
+      if (key === 'record_deletions') {
+        applyDeletionRows(
+          deletedRecordsRef.current,
+          Array.isArray(remotePayload) ? (remotePayload as { scope?: string; id?: string }[]) : []
+        );
+        saveDeletionKeys(deletedRecordsRef.current);
+        const merged = recordDeletionPayload();
+        applySharedPayload(key, merged);
+        if (stableJson(merged) !== stableJson(remotePayload || [])) {
+          lastSharedJsonRef.current[key] = stableJson(merged);
+          void saveShared(key, merged);
+        }
+        continue;
+      }
       if (key === 'building_deletions') {
         const remoteRows = Array.isArray(remotePayload) ? (remotePayload as { id?: string }[]) : [];
         remoteRows.forEach((row) => {
-          if (row?.id) deletedBuildingIdsRef.current.add(row.id);
+          if (row?.id) deletedRecordsRef.current.add(deletionKey('buildings', row.id));
         });
-        saveDeletedBuildingIds(deletedBuildingIdsRef.current);
-        const merged = deletionPayload();
+        saveDeletionKeys(deletedRecordsRef.current);
+        const merged = buildingDeletionPayload();
         applySharedPayload(key, merged);
         if (stableJson(merged) !== stableJson(remoteRows)) {
           lastSharedJsonRef.current[key] = stableJson(merged);
@@ -1357,6 +1423,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (mergedJson !== stableJson(remoteDir)) {
           lastSharedJsonRef.current[key] = mergedJson;
           void saveShared(key, mergedDir);
+        }
+        continue;
+      }
+      if (
+        key === 'tickets' ||
+        key === 'transactions' ||
+        key === 'worker_payouts' ||
+        key === 'neighbor_services' ||
+        key === 'neighbor_requests' ||
+        key === 'custom_roles'
+      ) {
+        const remoteList = Array.isArray(remotePayload) ? (remotePayload as { id: string }[]) : [];
+        const merged = dropDeleted(
+          key,
+          mergeById(local as { id: string }[], remoteList),
+          deletedRecordsRef.current
+        );
+        applySharedPayload(key, merged);
+        if (stableJson(merged) !== stableJson(remoteList)) {
+          lastSharedJsonRef.current[key] = stableJson(merged);
+          void saveShared(key, merged);
         }
         continue;
       }
@@ -1705,12 +1792,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     void hydrate();
     const stop = subscribeShared((key, payload) => {
       if (cancelled) return;
+      if (key === 'record_deletions' && Array.isArray(payload)) {
+        applyDeletionRows(deletedRecordsRef.current, payload as { scope?: string; id?: string }[]);
+        saveDeletionKeys(deletedRecordsRef.current);
+        applySharedPayload(key, recordDeletionPayload());
+        return;
+      }
       if (key === 'building_deletions' && Array.isArray(payload)) {
         (payload as { id?: string }[]).forEach((row) => {
-          if (row?.id) deletedBuildingIdsRef.current.add(row.id);
+          if (row?.id) deletedRecordsRef.current.add(deletionKey('buildings', row.id));
         });
-        saveDeletedBuildingIds(deletedBuildingIdsRef.current);
-        applySharedPayload(key, deletionPayload());
+        saveDeletionKeys(deletedRecordsRef.current);
+        applySharedPayload(key, buildingDeletionPayload());
         setBuildings((prev) => dropDeletedBuildings(prev));
         return;
       }
@@ -1718,6 +1811,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const merged = dropDeletedBuildings(
           mergeById(buildingsRef.current, payload as Building[])
         );
+        applySharedPayload(key, merged);
+        if (stableJson(merged) !== stableJson(payload)) {
+          lastSharedJsonRef.current[key] = stableJson(merged);
+          void saveShared(key, merged);
+        }
+        return;
+      }
+      if (
+        (key === 'tickets' ||
+          key === 'transactions' ||
+          key === 'worker_payouts' ||
+          key === 'neighbor_services' ||
+          key === 'neighbor_requests' ||
+          key === 'custom_roles') &&
+        Array.isArray(payload)
+      ) {
+        const local = localSharedFor(key) as { id: string }[];
+        const merged = dropDeleted(key, mergeById(local, payload as { id: string }[]), deletedRecordsRef.current);
         applySharedPayload(key, merged);
         if (stableJson(merged) !== stableJson(payload)) {
           lastSharedJsonRef.current[key] = stableJson(merged);
@@ -1878,9 +1989,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const bldg = buildings.find((b) => b.id === id);
     if (!bldg) return;
 
-    deletedBuildingIdsRef.current.add(id);
-    saveDeletedBuildingIds(deletedBuildingIdsRef.current);
-    flushSharedNow('building_deletions', deletionPayload());
+    rememberDeleted('buildings', id);
+
+    tickets
+      .filter((t) => t.buildingId === id)
+      .forEach((t) => deletedRecordsRef.current.add(deletionKey('tickets', t.id)));
+    transactions
+      .filter((t) => t.buildingId === id)
+      .forEach((t) => deletedRecordsRef.current.add(deletionKey('transactions', t.id)));
+    saveDeletionKeys(deletedRecordsRef.current);
+    flushSharedNow('record_deletions', recordDeletionPayload());
 
     const nextBuildings = buildings.filter((b) => b.id !== id);
     buildingsRef.current = nextBuildings;
@@ -2705,7 +2823,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo puedes borrar incidencias cuando ya están resueltas o rechazadas.');
       return;
     }
-    setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+    rememberDeleted('tickets', ticketId);
+    setTickets((prev) => {
+      const next = prev.filter((t) => t.id !== ticketId);
+      ticketsRef.current = next;
+      flushSharedNow('tickets', next);
+      return next;
+    });
     if (selectedTicketId === ticketId) setSelectedTicketId(null);
     showToast('Incidencia eliminada', `Se eliminó el reporte ${target.ticketNumber}.`, 'alert');
   };
@@ -3030,9 +3154,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo el administrador puede cambiar el estado de una nómina.');
       return;
     }
-    setWorkerPayouts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, status, notes: notes || p.notes } : p))
-    );
+    setWorkerPayouts((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, status, notes: notes || p.notes } : p));
+      workerPayoutsRef.current = next;
+      flushSharedNow('worker_payouts', next);
+      return next;
+    });
     showToast(
       'Estado de Pago Actualizado',
       `El pago ha sido marcado como ${status.toUpperCase()}.`,
@@ -3046,7 +3173,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     const target = workerPayouts.find((p) => p.id === id);
-    setWorkerPayouts((prev) => prev.filter((p) => p.id !== id));
+    rememberDeleted('worker_payouts', id);
+    setWorkerPayouts((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      workerPayoutsRef.current = next;
+      flushSharedNow('worker_payouts', next);
+      return next;
+    });
     showToast(
       'Nómina eliminada',
       target ? `Se eliminó ${target.code} de ${target.workerName}.` : 'El pago fue eliminado.',
@@ -3110,6 +3243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteCustomRole = (id: string) => {
     if (!canManageUsers(currentUser)) return;
     const target = customRoles.find((r) => r.id === id);
+    rememberDeleted('custom_roles', id);
     const next = customRoles.filter((r) => r.id !== id);
     customRolesRef.current = next;
     setCustomRoles(next);
@@ -3135,7 +3269,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo el administrador puede eliminar servicios SOFER.');
       return;
     }
-    setNeighborServices((prev) => prev.filter((s) => s.id !== id));
+    rememberDeleted('neighbor_services', id);
+    setNeighborServices((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      neighborServicesRef.current = next;
+      flushSharedNow('neighbor_services', next);
+      return next;
+    });
   };
 
   const createNeighborRequest = (data: Omit<NeighborServiceRequest, 'id' | 'createdAt' | 'status'>) => {
@@ -3247,7 +3387,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo el administrador puede eliminar solicitudes de servicio.');
       return;
     }
-    setNeighborRequests((prev) => prev.filter((r) => r.id !== id));
+    rememberDeleted('neighbor_requests', id);
+    setNeighborRequests((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      neighborRequestsRef.current = next;
+      flushSharedNow('neighbor_requests', next);
+      return next;
+    });
     showToast('Solicitud eliminada', 'La solicitud de servicio fue borrada.', 'alert');
   };
 
@@ -3295,7 +3441,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deny('Solo el administrador puede eliminar asientos.');
       return;
     }
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    rememberDeleted('transactions', id);
+    setTransactions((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      transactionsRef.current = next;
+      flushSharedNow('transactions', next);
+      return next;
+    });
     showToast('Movimiento Eliminado', 'La transacción fue eliminada del libro contable.', 'info');
   };
 

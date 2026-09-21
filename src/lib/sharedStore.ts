@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 
 export type SharedKey =
+  | 'record_deletions'
   | 'building_deletions'
   | 'buildings'
   | 'tickets'
@@ -12,6 +13,7 @@ export type SharedKey =
   | 'role_directory';
 
 export const SHARED_KEYS: SharedKey[] = [
+  'record_deletions',
   'building_deletions',
   'buildings',
   'tickets',
