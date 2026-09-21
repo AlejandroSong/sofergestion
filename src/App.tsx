@@ -19,6 +19,32 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { AdminControlPanel } from './components/AdminControlPanel';
 import { ResidentAdBanner } from './components/ResidentAdBanner';
 import { canOpenBuilding, canOpenReports, canManageBuildings, canPostAccounting, canManageSoferCatalog, canCreateTicket, canManageUsers } from './utils/permissions';
+import { consumeGoogleRedirectResult, ensureGoogleDeepLinkBridge, onGoogleOAuthResult } from './lib/googleAuth';
+import { explainAuthError } from './lib/authErrors';
+
+const GoogleOAuthBridge: React.FC = () => {
+  const { signInWithGoogleCredential } = useApp();
+
+  useEffect(() => {
+    void ensureGoogleDeepLinkBridge();
+    const pending = consumeGoogleRedirectResult();
+    if (pending.idToken) {
+      void signInWithGoogleCredential(pending.idToken);
+    }
+    const stop = onGoogleOAuthResult(({ idToken, error }) => {
+      if (idToken) {
+        void signInWithGoogleCredential(idToken).then((res) => {
+          if (!res.success) console.warn(explainAuthError(res.message));
+        });
+        return;
+      }
+      if (error) console.warn(explainAuthError(error));
+    });
+    return stop;
+  }, [signInWithGoogleCredential]);
+
+  return null;
+};
 
 const MainAppContent: React.FC = () => {
   const {
@@ -242,6 +268,7 @@ const MainAppContent: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
+      <GoogleOAuthBridge />
       <MainAppContent />
     </AppProvider>
   );

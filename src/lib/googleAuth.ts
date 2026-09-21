@@ -12,6 +12,7 @@ export { googleClientId, isAndroidWebView };
 const TOKEN_KEY = 'sofer-google-id-token';
 const ERROR_KEY = 'sofer-google-id-error';
 const APP_CALLBACK = 'es.sofergestion.app://google-callback';
+const OAUTH_EVENT = 'sofer-google-oauth';
 
 export function isNativeShell(): boolean {
   try {
@@ -31,6 +32,63 @@ export function isNativeShell(): boolean {
 export function isInAppShell(): boolean {
   return isNativeShell() || isAndroidWebView();
 }
+
+function stashGoogleResult(idToken?: string, error?: string) {
+  try {
+    if (idToken) {
+      sessionStorage.setItem(TOKEN_KEY, idToken);
+      localStorage.setItem(TOKEN_KEY, idToken);
+    }
+    if (error) {
+      sessionStorage.setItem(ERROR_KEY, error);
+      localStorage.setItem(ERROR_KEY, error);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function emitGoogleOAuth(idToken?: string, error?: string) {
+  window.dispatchEvent(new CustomEvent(OAUTH_EVENT, { detail: { idToken, error } }));
+}
+
+export function onGoogleOAuthResult(
+  handler: (result: { idToken?: string; error?: string }) => void
+) {
+  const listener = (event: Event) => {
+    handler((event as CustomEvent<{ idToken?: string; error?: string }>).detail || {});
+  };
+  window.addEventListener(OAUTH_EVENT, listener);
+  return () => window.removeEventListener(OAUTH_EVENT, listener);
+}
+
+let deepLinkBridge: Promise<{ remove: () => Promise<void> }> | null = null;
+
+export function ensureGoogleDeepLinkBridge() {
+  if (!isNativeShell()) {
+    return Promise.resolve({ remove: async () => undefined });
+  }
+  if (deepLinkBridge) return deepLinkBridge;
+  deepLinkBridge = import('@capacitor/app')
+    .then(({ App }) =>
+      App.addListener('appUrlOpen', ({ url }) => {
+        if (!url || !isGoogleReturnUrl(url)) return;
+        void closeBrowser();
+        try {
+          const { idToken, error } = parseGoogleCallbackUrl(url);
+          stashGoogleResult(idToken, error);
+          emitGoogleOAuth(idToken, error);
+        } catch {
+          stashGoogleResult(undefined, 'No se pudo procesar la respuesta de Google');
+          emitGoogleOAuth(undefined, 'No se pudo procesar la respuesta de Google');
+        }
+      })
+    )
+    .catch(() => ({ remove: async () => undefined }));
+  return deepLinkBridge;
+}
+
+void ensureGoogleDeepLinkBridge();
 
 export function consumeGoogleRedirectResult(): { idToken?: string; error?: string } {
   try {
@@ -127,24 +185,16 @@ export function listenForGoogleRedirect(
   onToken: (idToken: string) => void,
   onError: (message: string) => void
 ) {
-  if (!isNativeShell()) {
-    return Promise.resolve({ remove: async () => undefined });
-  }
-  return import('@capacitor/app')
-    .then(({ App }) =>
-      App.addListener('appUrlOpen', ({ url }) => {
-        if (!url || !isGoogleReturnUrl(url)) return;
-        void closeBrowser();
-        try {
-          const { idToken, error } = parseGoogleCallbackUrl(url);
-          if (idToken) onToken(idToken);
-          else if (error) onError(error);
-        } catch {
-          onError('No se pudo procesar la respuesta de Google');
-        }
-      })
-    )
-    .catch(() => ({ remove: async () => undefined }));
+  void ensureGoogleDeepLinkBridge();
+  return Promise.resolve({
+    remove: async () => undefined,
+  }).then(() => {
+    const stop = onGoogleOAuthResult(({ idToken, error }) => {
+      if (idToken) onToken(idToken);
+      else if (error) onError(error);
+    });
+    return { remove: async () => stop() };
+  });
 }
 
 export async function requestGoogleIdToken(clientId: string): Promise<string> {

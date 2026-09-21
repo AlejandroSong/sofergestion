@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { useApp } from '../context/AppContext';
-import { consumeGoogleRedirectResult, googleClientId, listenForGoogleRedirect, startGoogleRedirect } from '../lib/googleAuth';
+import { consumeGoogleRedirectResult, googleClientId, startGoogleRedirect } from '../lib/googleAuth';
 import { explainAuthError } from '../lib/authErrors';
 import { isSupabaseConfigured } from '../lib/supabase';
 
@@ -65,30 +65,6 @@ export const AuthScreen: React.FC = () => {
     }, 45000);
     return () => window.clearTimeout(freeze);
   }, [isBusy]);
-
-  useEffect(() => {
-    const handle = listenForGoogleRedirect(
-      (idToken) => {
-        setIsBusy(true);
-        void signInWithGoogleCredential(idToken)
-          .then((res) => {
-            setIsBusy(false);
-            if (!res.success) setErrorMessage(explainAuthError(res.message));
-          })
-          .catch((err) => {
-            setIsBusy(false);
-            setErrorMessage(explainAuthError(err));
-          });
-      },
-      (message) => {
-        setIsBusy(false);
-        setErrorMessage(explainAuthError(message));
-      }
-    );
-    return () => {
-      void handle.then((l) => l.remove());
-    };
-  }, [signInWithGoogleCredential]);
 
   return (
     <div className="min-h-screen bg-[#F7F9FC] text-[#1E3A5F] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden selection:bg-[#C5D9F2] selection:text-[#1E3A5F]">
