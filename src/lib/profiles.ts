@@ -217,11 +217,49 @@ export async function clearRevocation(email: string) {
   await supabase.from('access_revocations').delete().eq('email', email.trim().toLowerCase());
 }
 
+export const REVOKE_LIST_DAYS = 30;
+export const REVOKE_LIST_MAX = 8;
+const HIDDEN_REVOKED_KEY = 'gest_v2_hidden_revoked_list';
+
 export async function fetchRevokedEmails(): Promise<string[]> {
   if (!supabase) return [];
   const { data, error } = await supabase.from('access_revocations').select('email').order('revoked_at', { ascending: false });
   if (error || !data) return [];
   return data.map((row) => row.email);
+}
+
+function loadHiddenRevoked(): string[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_REVOKED_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map((email) => String(email).trim().toLowerCase()).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function hideRevokedEmailFromList(email: string) {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return;
+  const next = new Set(loadHiddenRevoked());
+  next.add(normalized);
+  localStorage.setItem(HIDDEN_REVOKED_KEY, JSON.stringify([...next]));
+}
+
+export async function fetchRecentRevokedEmails(): Promise<string[]> {
+  if (!supabase) return [];
+  const since = new Date(Date.now() - REVOKE_LIST_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('access_revocations')
+    .select('email, revoked_at')
+    .gte('revoked_at', since)
+    .order('revoked_at', { ascending: false })
+    .limit(REVOKE_LIST_MAX);
+  if (error || !data) return [];
+  const hidden = new Set(loadHiddenRevoked());
+  return data
+    .map((row) => (row.email || '').trim().toLowerCase())
+    .filter((email) => email && !hidden.has(email));
 }
 
 export async function isEmailRevoked(email: string): Promise<boolean> {

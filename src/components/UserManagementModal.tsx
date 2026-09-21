@@ -30,7 +30,7 @@ import { useApp } from '../context/AppContext';
 import { isLastActiveAdmin } from '../data/users';
 import { Role, User } from '../types';
 import { NeighborAccountEditModal } from './NeighborAccountEditModal';
-import { fetchRevokedEmails } from '../lib/profiles';
+import { fetchRecentRevokedEmails, hideRevokedEmailFromList, REVOKE_LIST_DAYS } from '../lib/profiles';
 import { formatCurrency } from '../utils/exportUtils';
 import { matchesQuery } from '../utils/safe';
 import { composeHousing, parseHousing } from '../utils/housing';
@@ -94,7 +94,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   useEffect(() => {
     if (!isOpen) return;
     void refreshDirectory();
-    void fetchRevokedEmails().then(setRevokedEmails);
+    void fetchRecentRevokedEmails().then(setRevokedEmails);
   }, [isOpen]);
 
   const standardSpecialties = [
@@ -330,7 +330,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                   Reactivar cuenta eliminada
                 </p>
                 <p className="text-[11px] text-[#5A6B82]">
-                  Escribe el correo bloqueado y pulsa Reactivar. Esa persona podrá entrar otra vez con Google y aparecerá sin rol.
+                  El acceso queda bloqueado siempre. Aquí solo salen los de los últimos {REVOKE_LIST_DAYS} días (máximo 8). Un correo antiguo se reactiva escribiéndolo abajo. Ocultar lo saca de esta lista, no le devuelve el acceso.
                 </p>
                 <form
                   className="flex flex-col sm:flex-row gap-2"
@@ -340,7 +340,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     if (!email) return;
                     await restoreAccess(email);
                     setRestoreEmail('');
-                    setRevokedEmails(await fetchRevokedEmails());
+                    setRevokedEmails(await fetchRecentRevokedEmails());
                   }}
                 >
                   <input
@@ -362,16 +362,29 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     {revokedEmails.map((email) => (
                       <div key={email} className="flex items-center justify-between gap-2 text-xs bg-[#F4F6FA] border border-[#E2E8F0] rounded-xl px-3 py-2">
                         <span className="truncate text-[#16202E]">{email}</span>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await restoreAccess(email);
-                            setRevokedEmails(await fetchRevokedEmails());
-                          }}
-                          className="text-[#0A2E6D] font-bold hover:underline cursor-pointer shrink-0"
-                        >
-                          Reactivar
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await restoreAccess(email);
+                              setRevokedEmails(await fetchRecentRevokedEmails());
+                            }}
+                            className="text-[#0A2E6D] font-bold hover:underline cursor-pointer"
+                          >
+                            Reactivar
+                          </button>
+                          <button
+                            type="button"
+                            title="Ocultar de la lista"
+                            onClick={() => {
+                              hideRevokedEmailFromList(email);
+                              setRevokedEmails((prev) => prev.filter((item) => item !== email));
+                            }}
+                            className="p-1 rounded-lg text-[#5A6B82] hover:bg-white hover:text-[#16202E] cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
