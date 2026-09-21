@@ -37,7 +37,7 @@ public class MainActivity extends BridgeActivity {
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         String ua = settings.getUserAgentString();
         if (ua != null && !ua.contains("SOFERGestion")) {
-            settings.setUserAgentString(ua + " SOFERGestion/2.0.2");
+            settings.setUserAgentString(ua + " SOFERGestion/2.0.3");
         }
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);

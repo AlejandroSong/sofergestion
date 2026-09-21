@@ -60,12 +60,20 @@ Copia `.env.example` a `.env.local` con `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON
 
 ## Google Cloud
 
-Orígenes de JavaScript y URIs de redirección:
+Orígenes de JavaScript y URIs de redirección (cliente **Web**, no Firebase):
 
 - `https://sofergestion.es`
 - `https://www.sofergestion.es`
+- `https://www.sofergestion.es/google-callback.html`
+- `https://sofergestion.es/google-callback.html`
 - `https://sofergestion-davidalejandroroblesmarquez-5406s-projects.vercel.app`
 - `http://localhost:3000`
+- `https://localhost`
+- `https://localhost/google-callback.html`
+
+Esta app **no usa** `google-services.json` ni Firebase Auth. El login es OAuth de Google (Client ID web) + `signInWithIdToken` de Supabase. El SHA-1/SHA-256 del APK solo hace falta para App Links (`.well-known/assetlinks.json`), no para entrar con Google dentro del WebView.
+
+En Supabase → Authentication → Providers → Google, el Client ID y el secret deben ser los del **mismo** cliente Web.
 
 ## Supabase
 

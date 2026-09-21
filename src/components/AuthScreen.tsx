@@ -3,6 +3,7 @@ import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { useApp } from '../context/AppContext';
 import { consumeGoogleRedirectResult, googleClientId, listenForGoogleRedirect, startGoogleRedirect } from '../lib/googleAuth';
+import { explainAuthError } from '../lib/authErrors';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthScreen: React.FC = () => {
@@ -16,48 +17,73 @@ export const AuthScreen: React.FC = () => {
     const finish = (res: { success: boolean; message?: string }) => {
       if (cancelled) return;
       setIsBusy(false);
-      if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
+      if (!res.success) setErrorMessage(explainAuthError(res.message));
     };
 
     const applyPending = () => {
       const pending = consumeGoogleRedirectResult();
       if (pending.error) {
-        setErrorMessage(pending.error);
+        setErrorMessage(explainAuthError(pending.error));
         setIsBusy(false);
         return true;
       }
       if (pending.idToken) {
         setIsBusy(true);
-        void signInWithGoogleCredential(pending.idToken).then(finish);
+        void signInWithGoogleCredential(pending.idToken)
+          .then(finish)
+          .catch((err) => finish({ success: false, message: explainAuthError(err) }));
         return true;
       }
       return false;
     };
 
-    if (applyPending()) {
-      return () => {
-        cancelled = true;
-      };
-    }
+    applyPending();
     const retry = window.setTimeout(() => {
       if (!cancelled) applyPending();
-    }, 400);
+    }, 500);
+
+    const onShow = () => {
+      if (cancelled) return;
+      if (!applyPending()) setIsBusy(false);
+    };
+    window.addEventListener('pageshow', onShow);
+    document.addEventListener('visibilitychange', onShow);
+
     return () => {
       cancelled = true;
       window.clearTimeout(retry);
+      window.removeEventListener('pageshow', onShow);
+      document.removeEventListener('visibilitychange', onShow);
     };
   }, [signInWithGoogleCredential]);
+
+  useEffect(() => {
+    if (!isBusy) return;
+    const freeze = window.setTimeout(() => {
+      setIsBusy(false);
+      setErrorMessage('El acceso no terminó. Vuelve a pulsar Continuar con Google.');
+    }, 45000);
+    return () => window.clearTimeout(freeze);
+  }, [isBusy]);
 
   useEffect(() => {
     const handle = listenForGoogleRedirect(
       (idToken) => {
         setIsBusy(true);
-        void signInWithGoogleCredential(idToken).then((res) => {
-          setIsBusy(false);
-          if (!res.success) setErrorMessage(res.message || 'No se pudo iniciar sesión con Google');
-        });
+        void signInWithGoogleCredential(idToken)
+          .then((res) => {
+            setIsBusy(false);
+            if (!res.success) setErrorMessage(explainAuthError(res.message));
+          })
+          .catch((err) => {
+            setIsBusy(false);
+            setErrorMessage(explainAuthError(err));
+          });
       },
-      (message) => setErrorMessage(message)
+      (message) => {
+        setIsBusy(false);
+        setErrorMessage(explainAuthError(message));
+      }
     );
     return () => {
       void handle.then((l) => l.remove());
@@ -95,7 +121,7 @@ export const AuthScreen: React.FC = () => {
           )}
           {isSupabaseConfigured && !googleClientId && (
             <div className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-800">
-              Falta el Client ID de Google.
+              Falta el Client ID de Google en la app.
             </div>
           )}
 
@@ -116,7 +142,7 @@ export const AuthScreen: React.FC = () => {
                 setIsBusy(true);
                 void startGoogleRedirect(googleClientId).catch((err) => {
                   setIsBusy(false);
-                  setErrorMessage(err instanceof Error ? err.message : 'No se pudo abrir Google');
+                  setErrorMessage(explainAuthError(err));
                 });
               }}
               className="w-full max-w-[336px] py-2.5 px-4 rounded-full border border-[#D5E4F5] bg-white text-sm font-semibold text-[#1E3A5F] cursor-pointer disabled:opacity-50"

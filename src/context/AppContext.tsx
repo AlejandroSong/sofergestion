@@ -12,6 +12,7 @@ import {
 } from '../data/initialData';
 import { ADMIN_USER, ACCOUNTS_RESET_KEY, ACCOUNTS_RESET_VALUE, isDemoAccount, isLastActiveAdmin, withSingleAdmin } from '../data/users';
 import { googleClientId, requestGoogleIdToken } from '../lib/googleAuth';
+import { explainAuthError, withTimeout } from '../lib/authErrors';
 import { fetchInbox, insertInbox, markInboxRead, markInboxReadMany, remoteToNotification } from '../lib/inbox';
 import { fetchSharedMap, saveShared, subscribeShared, stableJson, SHARED_KEYS, type SharedKey } from '../lib/sharedStore';
 import {
@@ -955,7 +956,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err) {
       return {
         success: false,
-        message: err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google',
+        message: explainAuthError(err),
       };
     }
   };
@@ -966,18 +967,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!supabase) {
       return { success: false, message: 'Falta configurar Supabase.' };
     }
-    const { error } = await supabase.auth.signInWithIdToken({
-      provider: 'google',
-      token,
-    });
-    if (error) {
-      const raw = error.message || '';
-      const message = /audience|jwt|invalid/i.test(raw)
-        ? 'Google no validó la sesión. Vuelve a pulsar Continuar con Google.'
-        : raw || 'No se pudo iniciar sesión con Google';
-      return { success: false, message };
+    if (!token) {
+      return { success: false, message: 'Google no devolvió un token. Vuelve a intentarlo.' };
     }
-    return { success: true };
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.signInWithIdToken({
+          provider: 'google',
+          token,
+        }),
+        20000,
+        'timeout'
+      );
+      if (error) {
+        return { success: false, message: explainAuthError(error.message) };
+      }
+      const { data, error: sessionError } = await withTimeout(supabase.auth.getSession(), 8000, 'timeout');
+      if (sessionError) {
+        return { success: false, message: explainAuthError(sessionError.message) };
+      }
+      if (!data.session?.user?.email) {
+        return {
+          success: false,
+          message: 'Google respondió, pero no hay sesión. Activa el proveedor Google en Supabase.',
+        };
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, message: explainAuthError(err) };
+    }
   };
 
   const registerUser = async (userData: {
@@ -1591,6 +1609,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
+    let cancelled = false;
+    const readyTimer = window.setTimeout(() => {
+      if (!cancelled) setAuthReady(true);
+    }, 8000);
+
     const applySession = (session: Session | null, silent: boolean) => {
       if (!session?.user?.email) {
         return;
@@ -1599,72 +1622,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const provider = session.user.app_metadata?.provider === 'google' ? 'google' : 'email';
       const email = session.user.email;
       void (async () => {
-        if (await isEmailRevoked(email)) {
-          await supabase.auth.signOut();
-          setIsAuthenticated(false);
-          localStorage.setItem('gest_v2_is_authenticated', 'false');
-          showToast('Acceso denegado', 'Esta cuenta fue eliminada y ya no tiene acceso a SOFER Gestión.', 'alert');
-          return;
-        }
-        await ensureSelfAdmin();
-        let remote = await fetchProfiles();
-        const selfRemote = remote.find((u) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
-        loginWithGoogle(
-          {
-            id: session.user.id,
-            name: meta.full_name || meta.name || email,
-            email,
-            avatar: meta.avatar_url || meta.picture,
-            provider,
-            role: selfRemote?.role,
-            buildingId: selfRemote?.buildingId,
-            specialty: selfRemote?.specialty,
-          },
-          silent
-        );
-        const pendingUser: User = {
-          id: session.user.id,
-          name: selfRemote?.name || meta.full_name || meta.name || email,
-          email,
-          role: selfRemote?.role || 'unassigned',
-          avatar: meta.avatar_url || meta.picture || selfRemote?.avatar || ADMIN_USER.avatar,
-          phone: selfRemote?.phone || '+34 600 000 000',
-          provider,
-          status: selfRemote?.status || 'active',
-          buildingId: selfRemote?.buildingId,
-          buildingName: selfRemote?.buildingName,
-          specialty: selfRemote?.specialty,
-          unitOrArea: selfRemote?.unitOrArea,
-          floor: selfRemote?.floor,
-        };
-        const result = await upsertProfile(pendingUser, session.user.id);
-        if (result.created) {
-          publishNotification({
-            id: crypto.randomUUID(),
-            title: 'Nueva solicitud de acceso',
-            message: `${pendingUser.name} (${email}) espera un rol. Ábrelo en Usuarios para asignarle vecino/presidente y su vivienda.`,
-            type: 'system',
-            timestamp: new Date().toISOString(),
-            read: false,
-            userId: pendingUser.id,
-            targetRoles: ['admin'],
-          });
-        }
-        remote = await fetchProfiles();
-        if (!remote.length) {
-          setCurrentUser((prev) => withDirectory([prev])[0] || prev);
-          return;
-        }
-        setUsers((prev) => {
-          const merged = withDirectory(mergeUsersByEmail(prev, remote));
-          localStorage.setItem('gest_v2_users', JSON.stringify(merged));
-          const self = merged.find((u) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
-          if (self) {
-            setCurrentUser(self);
-            localStorage.setItem('gest_v2_current_user', JSON.stringify(self));
+        try {
+          if (await isEmailRevoked(email)) {
+            await supabase.auth.signOut();
+            setIsAuthenticated(false);
+            localStorage.setItem('gest_v2_is_authenticated', 'false');
+            showToast('Acceso denegado', 'Esta cuenta fue eliminada y ya no tiene acceso a SOFER Gestión.', 'alert');
+            return;
           }
-          return merged;
-        });
+          await ensureSelfAdmin();
+          let remote = await fetchProfiles();
+          const selfRemote = remote.find((u) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
+          loginWithGoogle(
+            {
+              id: session.user.id,
+              name: meta.full_name || meta.name || email,
+              email,
+              avatar: meta.avatar_url || meta.picture,
+              provider,
+              role: selfRemote?.role,
+              buildingId: selfRemote?.buildingId,
+              specialty: selfRemote?.specialty,
+            },
+            silent
+          );
+          const pendingUser: User = {
+            id: session.user.id,
+            name: selfRemote?.name || meta.full_name || meta.name || email,
+            email,
+            role: selfRemote?.role || 'unassigned',
+            avatar: meta.avatar_url || meta.picture || selfRemote?.avatar || ADMIN_USER.avatar,
+            phone: selfRemote?.phone || '+34 600 000 000',
+            provider,
+            status: selfRemote?.status || 'active',
+            buildingId: selfRemote?.buildingId,
+            buildingName: selfRemote?.buildingName,
+            specialty: selfRemote?.specialty,
+            unitOrArea: selfRemote?.unitOrArea,
+            floor: selfRemote?.floor,
+          };
+          const result = await upsertProfile(pendingUser, session.user.id);
+          if (result.created) {
+            publishNotification({
+              id: crypto.randomUUID(),
+              title: 'Nueva solicitud de acceso',
+              message: `${pendingUser.name} (${email}) espera un rol. Ábrelo en Usuarios para asignarle vecino/presidente y su vivienda.`,
+              type: 'system',
+              timestamp: new Date().toISOString(),
+              read: false,
+              userId: pendingUser.id,
+              targetRoles: ['admin'],
+            });
+          }
+          remote = await fetchProfiles();
+          if (!remote.length) {
+            setCurrentUser((prev) => withDirectory([prev])[0] || prev);
+            return;
+          }
+          setUsers((prev) => {
+            const merged = withDirectory(mergeUsersByEmail(prev, remote));
+            localStorage.setItem('gest_v2_users', JSON.stringify(merged));
+            const self = merged.find((u) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
+            if (self) {
+              setCurrentUser(self);
+              localStorage.setItem('gest_v2_current_user', JSON.stringify(self));
+            }
+            return merged;
+          });
+        } catch (err) {
+          console.warn('applySession', err);
+          showToast('Aviso de sesión', explainAuthError(err), 'alert');
+        }
       })();
     };
 
@@ -1690,7 +1718,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
+    void supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) console.warn('getSession', error.message);
+        if (data.session) applySession(data.session, true);
+        setAuthReady(true);
+      })
+      .catch((err) => {
+        console.warn('getSession', err);
+        if (!cancelled) setAuthReady(true);
+      });
+
     return () => {
+      cancelled = true;
+      window.clearTimeout(readyTimer);
       subscription.unsubscribe();
     };
   }, []);
