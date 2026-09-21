@@ -43,6 +43,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
     currentUser,
     allUsers,
     workerPayouts,
+    customRoles,
     updateTicketStatus,
     assignWorkerToTicket,
     scheduleTicketVisit,
@@ -65,7 +66,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({ ticketId, 
   if (!isOpen || !ticket) return null;
 
   const building = buildings.find((b) => b.id === ticket.buildingId);
-  const workers = collectWorkerRoster(allUsers, workerPayouts, tickets);
+  const workers = collectWorkerRoster(allUsers, workerPayouts, tickets, customRoles);
   const existingExpenses = ticket.repairExpenses || [];
 
   const getPriorityBadge = (p: string) => {

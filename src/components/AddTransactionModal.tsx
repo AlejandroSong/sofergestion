@@ -18,7 +18,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const { currentUser, buildings, addTransaction } = useApp();
 
   const [buildingId, setBuildingId] = useState(
-    defaultBuildingId || currentUser.buildingId || buildings[0]?.id || ''
+    defaultBuildingId || currentUser.buildingId || buildings[0]?.id || 'sofer-admin'
   );
   const [type, setType] = useState<TransactionType>('ingreso');
   const [category, setCategory] = useState<TransactionCategory>('cuota_mantenimiento');
@@ -31,7 +31,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    setBuildingId(defaultBuildingId || currentUser.buildingId || buildings[0]?.id || '');
+    setBuildingId(defaultBuildingId || currentUser.buildingId || buildings[0]?.id || 'sofer-admin');
     setReferenceNumber(`REF-${Math.floor(10000 + Math.random() * 90000)}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset when the modal opens
   }, [isOpen, defaultBuildingId]);
@@ -44,7 +44,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
     addTransaction({
       buildingId,
-      buildingName: bldg ? bldg.name : 'Edificio General',
+      buildingName: bldg ? bldg.name : buildingId === 'sofer-admin' ? 'Administración SOFER' : 'Edificio General',
       type,
       category,
       categoryOther: category === 'otros' ? categoryOther.trim() : undefined,
@@ -160,6 +160,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       {b.name} ({b.code})
                     </option>
                   ))}
+                  <option value="sofer-admin">Administración SOFER (nómina / central)</option>
                 </select>
               </div>
 

@@ -1,4 +1,4 @@
-import { Ticket, User, WorkerPayout } from '../types';
+import { CustomRole, Ticket, User, WorkerPayout } from '../types';
 
 export interface WorkerRosterEntry {
   id: string;
@@ -9,19 +9,28 @@ export interface WorkerRosterEntry {
   fromAccount: boolean;
 }
 
+function samePerson(aId?: string, aName?: string, bId?: string, bName?: string) {
+  if (aId && bId && aId === bId) return true;
+  const left = (aName || '').trim().toLowerCase();
+  const right = (bName || '').trim().toLowerCase();
+  return Boolean(left && right && left === right);
+}
+
 export function collectWorkerRoster(
   users: User[],
   payouts: WorkerPayout[],
-  tickets: Ticket[]
+  tickets: Ticket[],
+  customRoles: CustomRole[] = []
 ): WorkerRosterEntry[] {
   const list: WorkerRosterEntry[] = [];
+  const workerEmails = new Set(
+    customRoles
+      .filter((role) => role.baseRole === 'worker')
+      .flatMap((role) => role.memberEmails.map((email) => email.trim().toLowerCase()))
+  );
 
   const findIndex = (id?: string, name?: string) =>
-    list.findIndex(
-      (w) =>
-        (id && w.id === id) ||
-        (name && w.name.trim().toLowerCase() === name.trim().toLowerCase())
-    );
+    list.findIndex((w) => samePerson(w.id, w.name, id, name));
 
   const upsert = (entry: WorkerRosterEntry) => {
     const idx = findIndex(entry.id, entry.name);
@@ -32,6 +41,7 @@ export function collectWorkerRoster(
     list[idx] = {
       ...list[idx],
       ...entry,
+      id: list[idx].fromAccount ? list[idx].id : entry.id || list[idx].id,
       fromAccount: list[idx].fromAccount || entry.fromAccount,
       specialty: list[idx].specialty || entry.specialty,
       avatar: list[idx].avatar || entry.avatar,
@@ -40,7 +50,11 @@ export function collectWorkerRoster(
   };
 
   users
-    .filter((u) => u.role === 'worker' && u.status !== 'suspended')
+    .filter(
+      (u) =>
+        u.status !== 'suspended' &&
+        (u.role === 'worker' || workerEmails.has((u.email || '').trim().toLowerCase()))
+    )
     .forEach((u) =>
       upsert({
         id: u.id,
@@ -66,6 +80,7 @@ export function collectWorkerRoster(
     upsert({
       id: t.assignedWorkerId || `ticket-${t.assignedWorkerName}`,
       name: t.assignedWorkerName || 'Operario',
+      specialty: t.assignedWorkerSpecialty,
       fromAccount: false,
     });
   });
@@ -77,7 +92,6 @@ export function countResolvedJobs(tickets: Ticket[], worker: { id?: string; name
   return tickets.filter(
     (t) =>
       t.status === 'resuelta' &&
-      ((worker.id && t.assignedWorkerId === worker.id) ||
-        (worker.name && t.assignedWorkerName === worker.name))
+      samePerson(t.assignedWorkerId, t.assignedWorkerName, worker.id, worker.name)
   ).length;
 }

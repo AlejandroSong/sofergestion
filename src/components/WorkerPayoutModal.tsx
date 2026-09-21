@@ -11,8 +11,8 @@ interface WorkerPayoutModalProps {
 }
 
 export const WorkerPayoutModal: React.FC<WorkerPayoutModalProps> = ({ isOpen, onClose }) => {
-  const { allUsers, workerPayouts, tickets, addWorkerPayout, currentUser } = useApp();
-  const workers = collectWorkerRoster(allUsers, workerPayouts, tickets);
+  const { allUsers, workerPayouts, tickets, customRoles, addWorkerPayout, currentUser } = useApp();
+  const workers = collectWorkerRoster(allUsers, workerPayouts, tickets, customRoles);
 
   const [workerId, setWorkerId] = useState('manual');
   const [manualName, setManualName] = useState('');
@@ -29,7 +29,7 @@ export const WorkerPayoutModal: React.FC<WorkerPayoutModalProps> = ({ isOpen, on
   useEffect(() => {
     if (!isOpen) return;
     setError('');
-    const roster = collectWorkerRoster(allUsers, workerPayouts, tickets);
+    const roster = collectWorkerRoster(allUsers, workerPayouts, tickets, customRoles);
     setWorkerId(roster[0]?.id || 'manual');
     setPeriod(`Nómina mensual - ${currentPeriodLabel()}`);
   }, [isOpen]);

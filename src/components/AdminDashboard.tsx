@@ -35,7 +35,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { exportAccountingToExcel, exportBuildingsPortfolioToExcel, exportTicketsToExcel, formatCurrency } from '../utils/exportUtils';
 import { collectWorkerRoster, countResolvedJobs } from '../utils/workers';
-import { initials } from '../utils/safe';
+import { asText, initials, statusLabel } from '../utils/safe';
 import { canDeleteFinishedTicket } from '../utils/permissions';
 import { Building, Ticket } from '../types';
 import { WorkerPayoutModal } from './WorkerPayoutModal';
@@ -68,6 +68,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     buildings,
     tickets,
     transactions,
+    customRoles,
     workerPayouts,
     updateWorkerPayoutStatus,
     setSelectedBuildingId,
@@ -134,7 +135,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const paidPayouts = workerPayouts.filter((p) => p.status === 'pagado');
   const totalWorkerPayoutsPaid = paidPayouts.reduce((acc, p) => acc + p.amount, 0);
 
-  const workerRoster = collectWorkerRoster(allUsers, workerPayouts, tickets);
+  const workerRoster = collectWorkerRoster(allUsers, workerPayouts, tickets, customRoles);
+  const ledger = [...transactions].sort((a, b) => {
+    const byDate = asText(b.date).localeCompare(asText(a.date));
+    if (byDate) return byDate;
+    return asText(b.id).localeCompare(asText(a.id));
+  });
   const isWorker = currentUser.role === 'worker';
   const myWorkerTickets = tickets.filter(
     (t) => t.assignedWorkerId === currentUser.id || t.assignedWorkerName === currentUser.name
@@ -1440,7 +1446,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <h3 className="text-lg sm:text-xl font-bold text-[#16202E] flex items-center gap-2">
                 <Euro className="w-5 h-5 text-green-600" />
-                Libro Diario Contable Global ({transactions.length})
+                Libro Diario Contable Global ({ledger.length})
               </h3>
               <p className="text-xs text-[#5A6B82]">
                 Registro cronológico consolidado de ingresos, cuotas comunitarias y gastos operativos.
@@ -1449,7 +1455,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => exportAccountingToExcel(transactions, 'Libro Diario Consolidado', 'Historico')}
+                onClick={() => exportAccountingToExcel(ledger, 'Libro Diario Consolidado', 'Historico')}
                 className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-[#16202E] border border-[#CBD5E1] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
               >
                 <FileSpreadsheet className="w-4 h-4 text-green-600" />
@@ -1481,20 +1487,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
-                {transactions.length === 0 ? (
+                {ledger.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-6 text-center text-[#5A6B82]">
                       No hay movimientos contables registrados.
                     </td>
                   </tr>
                 ) : (
-                  transactions.map((tx) => (
+                  ledger.map((tx) => (
                     <tr key={tx.id} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 font-mono font-semibold text-[#0A2E6D]">{tx.code}</td>
                       <td className="py-2.5 px-3 font-mono text-[#5A6B82]">{tx.date}</td>
                       <td className="py-2.5 px-3 font-medium">{tx.buildingName}</td>
                       <td className="py-2.5 px-3">{tx.description}</td>
-                      <td className="py-2.5 px-3 capitalize text-[#5A6B82]">{tx.category}</td>
+                      <td className="py-2.5 px-3 capitalize text-[#5A6B82]">{statusLabel(tx.categoryOther || tx.category)}</td>
                       <td className="py-2.5 px-3 capitalize text-[#5A6B82]">{tx.paymentMethod}</td>
                       <td
                         className={`py-2.5 px-3 text-right font-mono font-bold ${

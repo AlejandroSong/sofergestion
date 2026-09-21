@@ -29,6 +29,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { nextMonthFifthIso, todayIso } from '../utils/dates';
 import { parseHousing } from '../utils/housing';
 import { roleLabel } from '../utils/safe';
+import { collectWorkerRoster } from '../utils/workers';
 import {
   isNotificationForUser,
   loadReadNotificationIds,
@@ -2601,12 +2602,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const targetTicket = tickets.find((t) => t.id === ticketId);
     if (!targetTicket) return;
+    const roster = collectWorkerRoster(users, workerPayouts, tickets, customRoles);
     const workerUser = users.find((u) => u.id === workerId);
     const payoutWorker = workerPayouts.find((p) => p.workerId === workerId || p.workerName === workerId);
-    const name = workerUser?.name || payoutWorker?.workerName;
+    const rosterWorker = roster.find((w) => w.id === workerId);
+    const name = workerUser?.name || payoutWorker?.workerName || rosterWorker?.name;
     if (!name) return;
-    const specialty = workerUser?.specialty || payoutWorker?.workerSpecialty;
-    const assignedId = workerUser?.id || payoutWorker?.workerId || workerId;
+    const specialty =
+      workerUser?.specialty || payoutWorker?.workerSpecialty || rosterWorker?.specialty;
+    const assignedId = workerUser?.id || payoutWorker?.workerId || rosterWorker?.id || workerId;
 
     const now = new Date().toISOString();
     const timelineEvent = {
@@ -2618,8 +2622,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       action: `Ticket asignado al operario ${name}${specialty ? ` (${specialty})` : ''}`,
     };
 
-    setTickets((prev) =>
-      prev.map((t) =>
+    setTickets((prev) => {
+      const next = prev.map((t) =>
         t.id === ticketId
           ? {
               ...t,
@@ -2630,8 +2634,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               timeline: [...t.timeline, timelineEvent],
             }
           : t
-      )
-    );
+      );
+      ticketsRef.current = next;
+      flushSharedNow('tickets', next);
+      return next;
+    });
 
     const notif: PushNotification = {
       id: crypto.randomUUID(),
@@ -3089,7 +3096,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addWorkerPayout = (data: Omit<WorkerPayout, 'id' | 'code'>): WorkerPayout => {
     if (!canManagePayouts(currentUser)) {
       deny('Solo el administrador puede registrar nóminas.');
-      return workerPayouts[0] as WorkerPayout;
+      return {
+        id: '',
+        code: '',
+        workerId: '',
+        workerName: '',
+        amount: 0,
+        date: '',
+        status: 'pendiente',
+        paymentMethod: 'transferencia',
+        referenceNumber: '',
+        period: '',
+        approvedByAdmin: '',
+      };
     }
     const code = `PAY-${new Date().getFullYear()}-${String(workerPayouts.length + 1).padStart(3, '0')}`;
     const newPayout: WorkerPayout = {
@@ -3098,33 +3117,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       code,
     };
 
-    setWorkerPayouts((prev) => [newPayout, ...prev]);
+    setWorkerPayouts((prev) => {
+      const next = [newPayout, ...prev];
+      workerPayoutsRef.current = next;
+      flushSharedNow('worker_payouts', next);
+      return next;
+    });
 
-    // Also register general expense transaction if completed
     if (data.status === 'pagado') {
-      const codeTx = `GST-${new Date().getFullYear()}-${String(transactions.length + 1).padStart(3, '0')}`;
-      const newTx: Transaction = {
-        id: `tx-${Date.now()}`,
-        code: codeTx,
-        buildingId: buildings[0]?.id || 'bldg-1',
-        buildingName: 'Nómina Central Trabajadores',
+      const payrollTx: Transaction = {
+        id: `tx-pay-${newPayout.id}`,
+        code: `GST-NOM-${newPayout.code}`,
+        buildingId: 'sofer-admin',
+        buildingName: 'Administración SOFER',
         type: 'gasto',
         category: 'honorarios_tecnicos',
-        description: `Pago de Honorarios a ${data.workerName} - ${data.period}`,
+        description: `Nómina ${newPayout.code} · ${data.workerName} · ${data.period}`,
         amount: data.amount,
         date: data.date,
         registeredBy: currentUser.name,
         registeredByRole: currentUser.role,
-        paymentMethod: data.paymentMethod,
+        paymentMethod:
+          data.paymentMethod === 'cheque' || data.paymentMethod === 'tarjeta' || data.paymentMethod === 'efectivo'
+            ? data.paymentMethod
+            : 'transferencia',
         referenceNumber: data.referenceNumber,
+        ticketNumber: newPayout.code,
         status: 'completado',
       };
       setTransactions((prev) => {
-      const next = [newTx, ...prev];
-      transactionsRef.current = next;
-      flushSharedNow('transactions', next);
-      return next;
-    });
+        const next = [payrollTx, ...prev.filter((t) => t.id !== payrollTx.id)];
+        transactionsRef.current = next;
+        flushSharedNow('transactions', next);
+        return next;
+      });
     }
 
     // Push notification
@@ -3160,6 +3186,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       flushSharedNow('worker_payouts', next);
       return next;
     });
+    if (status === 'pagado') {
+      const payout = workerPayouts.find((p) => p.id === id);
+      if (payout) {
+        const payrollTx: Transaction = {
+          id: `tx-pay-${payout.id}`,
+          code: `GST-NOM-${payout.code}`,
+          buildingId: 'sofer-admin',
+          buildingName: 'Administración SOFER',
+          type: 'gasto',
+          category: 'honorarios_tecnicos',
+          description: `Nómina ${payout.code} · ${payout.workerName} · ${payout.period}`,
+          amount: payout.amount,
+          date: payout.date,
+          registeredBy: currentUser.name,
+          registeredByRole: currentUser.role,
+          paymentMethod:
+            payout.paymentMethod === 'cheque' || payout.paymentMethod === 'tarjeta' || payout.paymentMethod === 'efectivo'
+              ? payout.paymentMethod
+              : 'transferencia',
+          referenceNumber: payout.referenceNumber,
+          ticketNumber: payout.code,
+          status: 'completado',
+        };
+        setTransactions((prev) => {
+          if (prev.some((t) => t.id === payrollTx.id || t.ticketNumber === payout.code)) return prev;
+          const next = [payrollTx, ...prev];
+          transactionsRef.current = next;
+          flushSharedNow('transactions', next);
+          return next;
+        });
+      }
+    }
     showToast(
       'Estado de Pago Actualizado',
       `El pago ha sido marcado como ${status.toUpperCase()}.`,
@@ -3174,12 +3232,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const target = workerPayouts.find((p) => p.id === id);
     rememberDeleted('worker_payouts', id);
+    if (target) {
+      rememberDeleted('transactions', `tx-pay-${target.id}`);
+    }
     setWorkerPayouts((prev) => {
       const next = prev.filter((p) => p.id !== id);
       workerPayoutsRef.current = next;
       flushSharedNow('worker_payouts', next);
       return next;
     });
+    if (target) {
+      setTransactions((prev) => {
+        const next = prev.filter((t) => t.id !== `tx-pay-${target.id}` && t.ticketNumber !== target.code);
+        transactionsRef.current = next;
+        flushSharedNow('transactions', next);
+        return next;
+      });
+    }
     showToast(
       'Nómina eliminada',
       target ? `Se eliminó ${target.code} de ${target.workerName}.` : 'El pago fue eliminado.',
