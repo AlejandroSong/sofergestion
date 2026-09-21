@@ -264,6 +264,35 @@ function saveRemovedEmails(emails: Set<string>) {
   localStorage.setItem(REMOVED_EMAILS_KEY, JSON.stringify([...emails]));
 }
 
+const DELETED_BUILDINGS_KEY = 'gest_v2_deleted_buildings';
+
+function loadDeletedBuildingIds(): string[] {
+  try {
+    const raw = localStorage.getItem(DELETED_BUILDINGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map((id) => String(id)).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedBuildingIds(ids: Set<string>) {
+  localStorage.setItem(DELETED_BUILDINGS_KEY, JSON.stringify([...ids]));
+}
+
+function mergeById<T extends { id: string }>(local: T[], remote: T[]): T[] {
+  const map = new Map<string, T>();
+  local.forEach((item) => {
+    if (item?.id) map.set(item.id, item);
+  });
+  remote.forEach((item) => {
+    if (!item?.id) return;
+    const prev = map.get(item.id);
+    map.set(item.id, prev ? { ...prev, ...item } : item);
+  });
+  return [...map.values()];
+}
+
 function omitUndefined<T extends object>(obj: T): Partial<T> {
   const next: Partial<T> = {};
   (Object.keys(obj) as (keyof T)[]).forEach((key) => {
@@ -1053,7 +1082,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: Building[] = JSON.parse(saved);
-        return stripDemoBuildings(parsed).map((b) => ({
+        const deleted = new Set(loadDeletedBuildingIds());
+        return stripDemoBuildings(parsed)
+          .filter((b) => !deleted.has(b.id))
+          .map((b) => ({
           ...b,
           commonAreas: b.commonAreas || [],
           floorUtilityBills: b.floorUtilityBills || [],
@@ -1157,6 +1189,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const lastSharedJsonRef = useRef<Partial<Record<SharedKey, string>>>({});
   const buildingsRef = useRef(buildings);
   buildingsRef.current = buildings;
+  const deletedBuildingIdsRef = useRef<Set<string>>(new Set(loadDeletedBuildingIds()));
+
+  const dropDeletedBuildings = <T extends { id: string }>(list: T[]) =>
+    list.filter((item) => !deletedBuildingIdsRef.current.has(item.id));
+
+  const dropDeletedBuildingLinks = <T extends { buildingId?: string }>(list: T[]) =>
+    list.filter((item) => !item.buildingId || !deletedBuildingIdsRef.current.has(item.buildingId));
+
+  const deletionPayload = () => [...deletedBuildingIdsRef.current].map((id) => ({ id }));
   const ticketsRef = useRef(tickets);
   ticketsRef.current = tickets;
   const transactionsRef = useRef(transactions);
@@ -1176,14 +1217,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (lastSharedJsonRef.current[key] === json) return;
     lastSharedJsonRef.current[key] = json;
     switch (key) {
+      case 'building_deletions': {
+        (payload as { id?: string }[]).forEach((row) => {
+          if (row?.id) deletedBuildingIdsRef.current.add(row.id);
+        });
+        saveDeletedBuildingIds(deletedBuildingIdsRef.current);
+        setBuildings((prev) => dropDeletedBuildings(prev));
+        setTickets((prev) => dropDeletedBuildingLinks(prev));
+        setTransactions((prev) => dropDeletedBuildingLinks(prev));
+        break;
+      }
       case 'buildings':
-        setBuildings(stripDemoBuildings(payload as Building[]));
+        setBuildings(dropDeletedBuildings(stripDemoBuildings(payload as Building[])));
         break;
       case 'tickets':
-        setTickets(stripDemoTickets(payload as Ticket[]));
+        setTickets(dropDeletedBuildingLinks(stripDemoTickets(payload as Ticket[])));
         break;
       case 'transactions':
-        setTransactions(stripDemoTransactions(payload as Transaction[]));
+        setTransactions(dropDeletedBuildingLinks(stripDemoTransactions(payload as Transaction[])));
         break;
       case 'worker_payouts':
         setWorkerPayouts(stripDemoPayouts(payload as WorkerPayout[]));
@@ -1247,6 +1298,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const localSharedFor = (key: SharedKey): unknown[] => {
     switch (key) {
+      case 'building_deletions':
+        return deletionPayload();
       case 'buildings':
         return buildingsRef.current;
       case 'tickets':
@@ -1270,6 +1323,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     for (const key of SHARED_KEYS) {
       const remotePayload = remote[key];
       const local = localSharedFor(key);
+      if (key === 'building_deletions') {
+        const remoteRows = Array.isArray(remotePayload) ? (remotePayload as { id?: string }[]) : [];
+        remoteRows.forEach((row) => {
+          if (row?.id) deletedBuildingIdsRef.current.add(row.id);
+        });
+        saveDeletedBuildingIds(deletedBuildingIdsRef.current);
+        const merged = deletionPayload();
+        applySharedPayload(key, merged);
+        if (stableJson(merged) !== stableJson(remoteRows)) {
+          lastSharedJsonRef.current[key] = stableJson(merged);
+          void saveShared(key, merged);
+        }
+        continue;
+      }
+      if (key === 'buildings') {
+        const remoteList = Array.isArray(remotePayload) ? (remotePayload as Building[]) : [];
+        const merged = dropDeletedBuildings(mergeById(local as Building[], remoteList));
+        applySharedPayload(key, merged);
+        if (stableJson(merged) !== stableJson(remoteList)) {
+          lastSharedJsonRef.current[key] = stableJson(merged);
+          void saveShared(key, merged);
+        }
+        continue;
+      }
       if (key === 'role_directory') {
         const remoteDir = Array.isArray(remotePayload) ? (remotePayload as RoleDirectoryEntry[]) : [];
         const mergedDir = dropRemovedDirectory(
@@ -1628,6 +1705,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     void hydrate();
     const stop = subscribeShared((key, payload) => {
       if (cancelled) return;
+      if (key === 'building_deletions' && Array.isArray(payload)) {
+        (payload as { id?: string }[]).forEach((row) => {
+          if (row?.id) deletedBuildingIdsRef.current.add(row.id);
+        });
+        saveDeletedBuildingIds(deletedBuildingIdsRef.current);
+        applySharedPayload(key, deletionPayload());
+        setBuildings((prev) => dropDeletedBuildings(prev));
+        return;
+      }
+      if (key === 'buildings' && Array.isArray(payload)) {
+        const merged = dropDeletedBuildings(
+          mergeById(buildingsRef.current, payload as Building[])
+        );
+        applySharedPayload(key, merged);
+        if (stableJson(merged) !== stableJson(payload)) {
+          lastSharedJsonRef.current[key] = stableJson(merged);
+          void saveShared(key, merged);
+        }
+        return;
+      }
       if (key === 'role_directory' && Array.isArray(payload)) {
         applySharedPayload(
           key,
@@ -1781,8 +1878,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const bldg = buildings.find((b) => b.id === id);
     if (!bldg) return;
 
-    setBuildings((prev) => prev.filter((b) => b.id !== id));
-    // Also remove tickets and transactions or keep them isolated
+    deletedBuildingIdsRef.current.add(id);
+    saveDeletedBuildingIds(deletedBuildingIdsRef.current);
+    flushSharedNow('building_deletions', deletionPayload());
+
+    const nextBuildings = buildings.filter((b) => b.id !== id);
+    buildingsRef.current = nextBuildings;
+    setBuildings(nextBuildings);
+    flushSharedNow('buildings', nextBuildings);
+
+    setTickets((prev) => {
+      const next = prev.filter((t) => t.buildingId !== id);
+      ticketsRef.current = next;
+      flushSharedNow('tickets', next);
+      return next;
+    });
+    setTransactions((prev) => {
+      const next = prev.filter((t) => t.buildingId !== id);
+      transactionsRef.current = next;
+      flushSharedNow('transactions', next);
+      return next;
+    });
+    if (selectedBuildingId === id) setSelectedBuildingId(null);
     showToast('Edificio Removido', `El edificio "${bldg.name}" ha sido eliminado del sistema.`, 'alert');
   };
 
