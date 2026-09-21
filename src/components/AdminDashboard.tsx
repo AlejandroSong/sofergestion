@@ -201,7 +201,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <p className="text-xs sm:text-sm text-[#5A6B82] max-w-2xl leading-relaxed">
               {isWorker
                 ? `Bienvenido/a ${currentUser.name}. Visualiza y atiende tus incidencias asignadas, consulta el estado de las averías en los edificios y añade los gastos de repuestos empleados.`
-                : `Supervisión de ${buildings.length} inmuebles, contabilidad de ingresos/gastos, control exclusivo de pagos a operarios y auditoría de incidencias generales.`}
+                : 'Supervisión de inmuebles, contabilidad de ingresos/gastos, control exclusivo de pagos a operarios y auditoría de incidencias generales.'}
             </p>
           </div>
         </div>
