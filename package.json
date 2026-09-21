@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit",
     "mobile:sync": "vite build && npx cap sync",
     "mobile:android": "npm run mobile:sync && npx cap open android",
+    "mobile:apk": "vite build && npx cap sync android && node scripts/assemble-android-apk.mjs",
     "mobile:ios": "npm run mobile:sync && npx cap open ios",
     "appflow:build": "vite build"
   },

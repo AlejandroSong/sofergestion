@@ -30,11 +30,12 @@ No hace falta un repo nuevo. Capacitor envuelve esta web: las carpetas `android/
 
 ```bash
 npm install
-npm run mobile:sync
-npm run mobile:android
+npm run mobile:apk
 ```
 
-Se abre **Android Studio**. Ahí: un emulador o un móvil por USB → Run.
+Eso genera `sofer-gestion-debug.apk` (y `android/app/build/outputs/apk/debug/app-debug.apk`). Instálalo en el móvil (hay que permitir “orígenes desconocidos”). La app carga `https://www.sofergestion.es` dentro del WebView, con Google dentro de SOFER, no en Chrome.
+
+Si no hay JDK/SDK en el PC, instala **Android Studio**, ábrelo una vez y vuelve a `npm run mobile:apk`. Alternativa: `npm run mobile:android` abre Android Studio para emulador o USB.
 
 **iOS:** la carpeta `ios/` ya está en el repo (mismo `appId` que Android: `es.sofergestion.app`). **Firmar y subir a App Store hace falta un Mac con Xcode** y certificados en Appflow. En el Mac, en esta misma carpeta:
 

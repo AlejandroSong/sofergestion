@@ -82,7 +82,8 @@ public class MainActivity extends BridgeActivity {
             return false;
         }
         host = host.toLowerCase();
-        return host.equals("www.sofergestion.es")
+        return host.equals("localhost")
+            || host.equals("www.sofergestion.es")
             || host.equals("sofergestion.es")
             || host.endsWith(".supabase.co")
             || host.equals("accounts.google.com")
